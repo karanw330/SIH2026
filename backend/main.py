@@ -77,7 +77,50 @@ def get_hazard_geojson(
     """Returns GeoJSON feature collection for NDEM Landslide Hazard Zonation (nerlhz50dsc)."""
     return processor.get_hazard_geojson(state=state, district=district, bbox=bbox, zoom=zoom)
 
+@app.get("/api/route")
+def get_shortest_path(
+    lat1: float = Query(..., description="Origin latitude"),
+    lon1: float = Query(..., description="Origin longitude"),
+    lat2: float = Query(..., description="Destination latitude"),
+    lon2: float = Query(..., description="Destination longitude")
+):
+    """Proxies Bhuvan Shortest Path Routing API (intra-state road network routing)."""
+    import urllib.request
+    import urllib.parse
 
+    token = os.getenv("BHUVAN_ROUTING_KEY")
+    bhuvan_url = f"https://bhuvan-app1.nrsc.gov.in/api/routing/curl_routing_state.php?lat1={lat1}&lon1={lon1}&lat2={lat2}&lon2={lon2}&token={token}"
+
+    try:
+        req = urllib.request.Request(bhuvan_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=12) as res:
+            body = res.read().decode("utf-8").strip()
+
+            if "same state" in body.lower():
+                return {
+                    "status": "error",
+                    "message": "Origin and destination points must be within the same state for Bhuvan routing.",
+                    "geojson": None
+                }
+
+            try:
+                data = json.loads(body)
+                return {
+                    "status": "success",
+                    "geojson": data
+                }
+            except Exception as pe:
+                return {
+                    "status": "error",
+                    "message": f"Failed to parse Bhuvan response: {body[:200]}",
+                    "geojson": None
+                }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Routing API request failed: {str(e)}",
+            "geojson": None
+        }
 
 @app.get("/api/stats")
 def get_stats():

@@ -327,21 +327,34 @@ class GeoJSONProcessor:
 
             active_cnt = 0
             dormant_cnt = 0
+            historical_cnt = 0
             year_counts = {}
             centroid_features = []
+            current_year = 2026
 
             for feat in ls_features:
                 props = feat.get("properties", {})
                 activity = str(props.get("Activity", props.get("activity", props.get("lanslide_1", "")))).lower()
-                if "active" in activity:
-                    active_cnt += 1
-                elif "dormant" in activity or "old" in activity:
-                    dormant_cnt += 1
-
+                
                 raw_yr = str(props.get("Year", props.get("year", props.get("year_", "")))).strip()
+                feat_yr = None
                 if raw_yr and raw_yr not in ("None", "Null", "unknown", "nan", ""):
                     yr = raw_yr.split(".")[0]
                     year_counts[yr] = year_counts.get(yr, 0) + 1
+                    if yr.isdigit():
+                        feat_yr = int(yr)
+
+                if feat_yr is not None and feat_yr > 1900:
+                    age = current_year - feat_yr
+                else:
+                    age = 0 if "active" in activity else 10
+
+                if age < 1:
+                    active_cnt += 1
+                elif 1 <= age <= 5:
+                    dormant_cnt += 1
+                else:
+                    historical_cnt += 1
 
                 # Calculate Feature Bounding Box & Centroid
                 geom = feat.get("geometry", {})
@@ -383,12 +396,13 @@ class GeoJSONProcessor:
                 "total_landslides": len(ls_features),
                 "active_count": active_cnt,
                 "dormant_count": dormant_cnt,
+                "historical_count": historical_cnt,
                 "years_count": year_counts,
                 "available_years": sorted_years
             }
             self.stats["landslides"] = self.landslide_stats
             self.is_landslides_loaded = True
-            print(f"Successfully processed {len(ls_features):,} landslide polygons ({active_cnt:,} active, {dormant_cnt:,} dormant across years {sorted_years}).")
+            print(f"Successfully processed {len(ls_features):,} landslide features ({active_cnt:,} active [<1yr], {dormant_cnt:,} dormant [1-5yrs], {historical_cnt:,} historical [>5yrs]).")
         except Exception as e:
             print(f"Error loading landslide dataset: {e}")
 

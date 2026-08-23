@@ -152,6 +152,47 @@
             <button class="layer-btn" data-layer="street">Street</button>
           </div>
         </div>
+
+        <!-- Bhuvan Shortest Path Routing -->
+        <div class="filter-group routing-section" style="margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <label style="color: var(--accent-cyan); font-weight: 700;">
+            <i class="fa-solid fa-route"></i> Bhuvan Road Routing (Intra-state)
+          </label>
+          
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">
+            Pick origin & destination on map or select preset:
+          </div>
+
+          <select id="route-preset-select" class="select-input" style="margin-bottom: 8px;">
+            <option value="">-- Choose Sample Preset Route --</option>
+            <option value="26.1445,91.7362|26.6528,92.6841">Assam: Guwahati -> Tezpur</option>
+            <option value="26.1445,91.7362|27.4728,94.9120">Assam: Guwahati -> Dibrugarh</option>
+            <option value="26.1445,91.7362|26.7509,94.2037">Assam: Guwahati -> Jorhat</option>
+            <option value="24.8170,93.9368|24.3355,93.6766">Manipur: Imphal -> Churachandpur</option>
+            <option value="23.8315,91.2868|24.3168,91.9868">Tripura: Agartala -> Kailashahar</option>
+          </select>
+
+          <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+            <input type="text" id="route-origin" placeholder="Origin Lat, Lng" class="search-field" style="font-size: 0.75rem; padding: 6px;" readonly />
+            <button id="btn-pick-origin" class="layer-btn" title="Pick Origin on Map" style="padding: 6px 10px;"><i class="fa-solid fa-location-crosshairs"></i></button>
+          </div>
+
+          <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+            <input type="text" id="route-dest" placeholder="Destination Lat, Lng" class="search-field" style="font-size: 0.75rem; padding: 6px;" readonly />
+            <button id="btn-pick-dest" class="layer-btn" title="Pick Destination on Map" style="padding: 6px 10px;"><i class="fa-solid fa-flag-checkered"></i></button>
+          </div>
+
+          <div style="display: flex; gap: 6px;">
+            <button id="btn-calc-route" class="popup-btn" style="flex: 1; background: #0284c7; font-weight: 700;">
+              <i class="fa-solid fa-map-location-dot"></i> Find Path
+            </button>
+            <button id="btn-clear-route" class="layer-btn" style="padding: 6px 12px;" title="Clear Route">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+
+          <div id="route-status-msg" style="font-size: 0.75rem; margin-top: 8px; color: var(--text-muted);"></div>
+        </div>
       </aside>
 
       <!-- Map Canvas -->
@@ -162,16 +203,16 @@
         <div class="map-legend glass-card" id="map-legend">
           <h4>Legend</h4>
           <div class="legend-item">
-            <span class="legend-color surface-color"></span>
-            <span>OSM Point Feature</span>
+            <span class="legend-color active-landslide-color" style="background: #ef4444; border: 1px solid #dc2626;"></span>
+            <span>Active Landslide (&lt;1 yr)</span>
           </div>
           <div class="legend-item">
-            <span class="legend-color active-landslide-color"></span>
-            <span>Active Landslide Polygon</span>
+            <span class="legend-color dormant-landslide-color" style="background: #f59e0b; border: 1px solid #d97706;"></span>
+            <span>Old/Dormant Landslide (1-5 yrs)</span>
           </div>
           <div class="legend-item">
-            <span class="legend-color dormant-landslide-color"></span>
-            <span>Old/Dormant Landslide</span>
+            <span class="legend-color historical-landslide-color" style="background: #3b82f6; border: 1px solid #2563eb;"></span>
+            <span>Historical Landslide (&gt;5 yrs)</span>
           </div>
           <div class="legend-divider" style="border-top: 1px solid rgba(255,255,255,0.1); margin: 6px 0;"></div>
           <h5 style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Hazard Risk Baseline</h5>

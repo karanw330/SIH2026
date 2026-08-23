@@ -10,6 +10,10 @@ const state = {
   markersLayer: null,
   landslidesLayer: null,
   hazardLayer: null,
+  routeLayer: null,
+  routeOrigin: null,
+  routeDest: null,
+  pickMode: null,
   currentGeoJSON: null,
   currentLandslidesGeoJSON: null,
   currentHazardGeoJSON: null,
@@ -34,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchLandslidesData();
   fetchHazardData();
   setupEventListeners();
+  setupRoutingEventListeners();
 });
 
 // Initialize Leaflet Map
@@ -69,37 +74,100 @@ function initMap() {
   // Set default dark layer
   state.tileLayers.dark.addTo(state.map);
 
-  // Marker Cluster Group for OSM features with fallback
-  if (typeof L.markerClusterGroup === 'function') {
-    state.markersLayer = L.markerClusterGroup({
-      chunkedLoading: true,
-      maxClusterRadius: 40,
-      spiderfyOnMaxZoom: true,
-      showCoverageOnHover: false,
-      iconCreateFunction: function(cluster) {
-        const count = cluster.getChildCount();
-        return L.divIcon({
-          html: `<div class="cluster-inner"><span>${count}</span></div>`,
-          className: 'custom-cluster-icon',
-          iconSize: L.point(40, 40)
-        });
-      }
-    });
-  } else {
-    state.markersLayer = L.layerGroup();
-  }
+  // Plain layer group for OSM features
+  state.markersLayer = L.layerGroup();
 
   // Global Canvas Renderer for high-performance vector rendering
   state.canvasRenderer = L.canvas({ padding: 0.2 });
 
-  // Layer groups for NDEM Hazard Zonation and Landslide Polygons
+  // Layer groups for Hazard Zonation, Landslide Polygons, and Shortest Path Route
   state.hazardLayer = L.layerGroup();
   state.landslidesLayer = L.layerGroup();
+  state.routeLayer = L.layerGroup();
 
-  // Order layers: Baseline Hazard Risk at bottom, Landslide Polygons in middle, Point Markers on top
+  // Order layers: Baseline Hazard Risk at bottom, Landslide Polygons, Route Line, Point Markers on top
   state.map.addLayer(state.hazardLayer);
   state.map.addLayer(state.landslidesLayer);
+  state.map.addLayer(state.routeLayer);
   state.map.addLayer(state.markersLayer);
+
+  // Map Click Listener for interactive Origin/Destination picking
+  state.map.on('click', (e) => {
+    if (!state.pickMode) return;
+    const lat = parseFloat(e.latlng.lat.toFixed(5));
+    const lng = parseFloat(e.latlng.lng.toFixed(5));
+
+    if (state.pickMode === 'origin') {
+      state.routeOrigin = { lat, lng };
+      const origInput = document.getElementById('route-origin');
+      if (origInput) origInput.value = `${lat}, ${lng}`;
+      updateRoutePickerMarkers();
+      state.pickMode = null;
+      setRouteStatus('Origin set! Now pick destination or click Find Path.');
+    } else if (state.pickMode === 'dest') {
+      state.routeDest = { lat, lng };
+      const destInput = document.getElementById('route-dest');
+      if (destInput) destInput.value = `${lat}, ${lng}`;
+      updateRoutePickerMarkers();
+      state.pickMode = null;
+      setRouteStatus('Destination set! Click Find Path.');
+    }
+  });
+
+  // Dynamic Viewport & Zoom Event Listener
+  let mapMoveTimeout;
+  state.map.on('moveend', () => {
+    clearTimeout(mapMoveTimeout);
+    mapMoveTimeout = setTimeout(() => {
+      renderMapFeatures();
+      renderLandslideFeatures();
+    }, 100);
+  });
+}
+
+// Helper: Filter & Sample points based on Map Viewport Bounding Box & Zoom Level
+function getSampledViewportFeatures(features, getLatLngFn) {
+  if (!state.map || !features || features.length === 0) return features || [];
+
+  // 1. Viewport Bounding Box Check (with 10% padding for smooth panning)
+  const bounds = state.map.getBounds().pad(0.1);
+  const visibleFeatures = [];
+
+  for (let i = 0; i < features.length; i++) {
+    const feat = features[i];
+    const latlng = getLatLngFn(feat);
+    if (latlng && bounds.contains(latlng)) {
+      visibleFeatures.push({ feat, latlng });
+    }
+  }
+
+  // 2. Zoom Level Downsampling
+  const zoom = state.map.getZoom();
+  let step = 1;
+
+  if (zoom >= 10) {
+    step = 1;  // 100% of visible points
+  } else if (zoom === 9) {
+    step = 2;  // 50% of visible points
+  } else if (zoom === 8) {
+    step = 3;  // 33% of visible points
+  } else if (zoom === 7) {
+    step = 5;  // 20% of visible points
+  } else if (zoom === 6) {
+    step = 10; // 10% of visible points
+  } else {
+    step = 20; // 5% of visible points at zoom <= 5
+  }
+
+  if (step === 1) {
+    return visibleFeatures;
+  }
+
+  const sampled = [];
+  for (let i = 0; i < visibleFeatures.length; i += step) {
+    sampled.push(visibleFeatures[i]);
+  }
+  return sampled;
 }
 
 // Fetch Regional Statistics & Districts
@@ -296,62 +364,59 @@ function renderMapFeatures() {
 
   const features = state.currentGeoJSON.features || [];
   const searchQuery = state.activeFilters.searchQuery.toLowerCase();
-  let validMarkerCount = 0;
 
-  features.forEach((feature, index) => {
+  const filteredFeatures = features.filter((feature) => {
+    if (!searchQuery) return true;
+    const props = feature.properties || {};
+    const name = String(props.name || props.station_name || '').toLowerCase();
+    const fid = String(props.id || props.GmlID || '').toLowerCase();
+    const dist = String(props.district__name || props.district || '').toLowerCase();
+    const type = String(props.type || '').toLowerCase();
+    return name.includes(searchQuery) || fid.includes(searchQuery) || dist.includes(searchQuery) || type.includes(searchQuery);
+  });
+
+  const sampledItems = getSampledViewportFeatures(filteredFeatures, (feature) => {
     const props = feature.properties || {};
     const geom = feature.geometry || {};
-
-    if (searchQuery) {
-      const name = String(props.name || props.station_name || '').toLowerCase();
-      const fid = String(props.id || props.GmlID || '').toLowerCase();
-      const dist = String(props.district__name || props.district || '').toLowerCase();
-      const type = String(props.type || '').toLowerCase();
-
-      if (!name.includes(searchQuery) && !fid.includes(searchQuery) && !dist.includes(searchQuery) && !type.includes(searchQuery)) {
-        return;
-      }
-    }
-
     let lat = props.lat;
     let lng = props.long;
-
     if (geom.type === 'Point' && Array.isArray(geom.coordinates)) {
       lng = geom.coordinates[0];
       lat = geom.coordinates[1];
     }
+    if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;
+    return L.latLng(lat, lng);
+  });
 
-    if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
-      const customIcon = L.divIcon({
-        className: 'custom-marker surface',
-        html: '<i class="fa-solid fa-location-dot"></i>',
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
-      });
+  sampledItems.forEach(({ feat: feature, latlng }, index) => {
+    const props = feature.properties || {};
+    const customIcon = L.divIcon({
+      className: 'custom-marker surface',
+      html: '<i class="fa-solid fa-location-dot"></i>',
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
 
-      const marker = L.marker([lat, lng], { icon: customIcon });
-      const featureId = props.id || props.GmlID || `feat_${index}`;
+    const marker = L.marker(latlng, { icon: customIcon });
+    const featureId = props.id || props.GmlID || `feat_${index}`;
 
-      const popupHtml = `
-        <div class="popup-card">
-          <span class="popup-tag surface">${props.type || 'OSM Feature'}</span>
-          <h3>${props.name || props.station_name || `Feature #${featureId}`}</h3>
-          <div class="popup-meta">
-            <div><strong>ID:</strong> ${featureId}</div>
-            <div><strong>Coordinates:</strong> ${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
-            ${props.state_name ? `<div><strong>State:</strong> ${props.state_name}</div>` : ''}
-            ${props.district__name ? `<div><strong>District:</strong> ${props.district__name}</div>` : ''}
-          </div>
-          <button class="popup-btn" onclick="openFeatureDrawer('${featureId}', ${index})">View Details</button>
+    const popupHtml = `
+      <div class="popup-card">
+        <span class="popup-tag surface">${props.type || 'OSM Feature'}</span>
+        <h3>${props.name || props.station_name || `Feature #${featureId}`}</h3>
+        <div class="popup-meta">
+          <div><strong>ID:</strong> ${featureId}</div>
+          <div><strong>Coordinates:</strong> ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}</div>
+          ${props.state_name ? `<div><strong>State:</strong> ${props.state_name}</div>` : ''}
+          ${props.district__name ? `<div><strong>District:</strong> ${props.district__name}</div>` : ''}
         </div>
-      `;
+        <button class="popup-btn" onclick="openFeatureDrawer('${featureId}', ${index})">View Details</button>
+      </div>
+    `;
 
-      marker.bindPopup(popupHtml);
-      marker.featureData = props;
-
-      state.markersLayer.addLayer(marker);
-      validMarkerCount++;
-    }
+    marker.bindPopup(popupHtml);
+    marker.featureData = props;
+    state.markersLayer.addLayer(marker);
   });
 
   updateKPICards();
@@ -386,75 +451,115 @@ function renderLandslideFeatures(shouldFitBounds = false) {
     return stateName.includes(searchQuery) || dist.includes(searchQuery) || activity.includes(searchQuery) || slideno.includes(searchQuery);
   });
 
-  const geoJsonLayer = L.geoJSON({ type: 'FeatureCollection', features: filteredFeatures }, {
-    renderer: state.canvasRenderer,
-    pointToLayer: function(feature, latlng) {
-      return L.circleMarker(latlng, {
-        renderer: state.canvasRenderer,
-        radius: 4,
-        fillColor: '#ef4444',
-        color: '#dc2626',
-        weight: 1,
-        opacity: 0.9,
-        fillOpacity: 0.7
-      });
-    },
-    style: function(feature) {
-      const props = feature.properties || {};
-      const activity = String(props.Activity || props.activity || props.lanslide_1 || '').toLowerCase();
-      const isActive = activity.includes('active');
-      return {
-        renderer: state.canvasRenderer,
-        color: isActive ? '#ef4444' : '#f59e0b',
-        weight: 2,
-        opacity: 0.9,
-        fillColor: isActive ? '#ef4444' : '#f59e0b',
-        fillOpacity: 0.4
-      };
-    },
-    onEachFeature: function(feature, layer) {
-      const props = feature.properties || {};
-      const activity = props.Activity || props.activity || props.lanslide_1 || 'Landslide Feature';
-      const stateName = props.State || props.state || props.state_name || 'N/A';
-      const district = props.District || props.district || props.district__name || 'N/A';
-      const rawYear = (props.Year || props.year || props.year_ || 'N/A').toString();
-      const yearVal = rawYear.replace('.0', '');
-      const slideNo = props.SlideNo || props.slideno || props.id || 'N/A';
-      const area = props.Area_sqm || props.area_sqm || props.area || props.area_sq_m || 'N/A';
-      const trigger = props.Triggering || props.triggering || props.trigg_fact || 'Rainfall';
-      const geomorph = props.Geomorph || props.geomorph || 'N/A';
-      const lithology = props.Lithology || props.lithology || 'N/A';
-      const lulc = props.LULC || props.lulc || 'N/A';
-
-      const isActive = String(activity).toLowerCase().includes('active');
-
-      const popupHtml = `
-        <div class="popup-card">
-          <span class="popup-tag" style="background: ${isActive ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}; color: ${isActive ? '#ef4444' : '#f59e0b'};">
-            <i class="fa-solid fa-triangle-exclamation"></i> ${activity}
-          </span>
-          <h3>Landslide ${slideNo}</h3>
-          <div class="popup-meta">
-            <div><strong>Year:</strong> <span style="color: var(--accent-amber); font-weight:700;">${yearVal}</span></div>
-            <div><strong>State:</strong> ${stateName}</div>
-            <div><strong>District:</strong> ${district}</div>
-            <div><strong>Area:</strong> ${typeof area === 'number' ? area.toLocaleString() + ' sq m' : area}</div>
-            <div><strong>Trigger Factor:</strong> ${trigger}</div>
-            ${geomorph !== 'N/A' ? `<div><strong>Geomorphology:</strong> ${geomorph}</div>` : ''}
-            ${lithology !== 'N/A' ? `<div><strong>Lithology:</strong> ${lithology}</div>` : ''}
-            ${lulc !== 'N/A' ? `<div><strong>Land Cover (LULC):</strong> ${lulc}</div>` : ''}
-          </div>
-        </div>
-      `;
-      layer.bindPopup(popupHtml);
+  // Filter features to current Viewport Bounds and sample based on Zoom level
+  const sampledItems = getSampledViewportFeatures(filteredFeatures, (feat) => {
+    const geom = feat.geometry;
+    if (!geom) return null;
+    let lat, lng;
+    if (geom.type === 'Point') {
+      [lng, lat] = geom.coordinates;
+    } else if (geom.type === 'Polygon' && geom.coordinates.length > 0) {
+      const ring = geom.coordinates[0];
+      lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+      lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+    } else if (geom.type === 'MultiPolygon' && geom.coordinates.length > 0) {
+      const ring = geom.coordinates[0][0];
+      lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+      lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+    } else {
+      return null;
     }
+    if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;
+    return L.latLng(lat, lng);
   });
 
-  state.landslidesLayer.addLayer(geoJsonLayer);
+  const currentYear = new Date().getFullYear();
+
+  sampledItems.forEach(({ feat, latlng }) => {
+    const props = feat.properties || {};
+    const activity = String(props.Activity || props.activity || props.lanslide_1 || '').toLowerCase();
+    const rawYear = (props.Year || props.year || props.year_ || 'N/A').toString();
+    const yearVal = rawYear.replace('.0', '');
+    const featYear = parseInt(yearVal, 10);
+
+    let fillColor = '#3b82f6';
+    let strokeColor = '#2563eb';
+    let badgeBg = 'rgba(59, 130, 246, 0.2)';
+    let badgeColor = '#3b82f6';
+    let classificationLabel = 'Historical Landslide (>5 yrs)';
+
+    let age;
+    if (!isNaN(featYear) && featYear > 1900) {
+      age = currentYear - featYear;
+    } else {
+      age = activity.includes('active') ? 0 : 10;
+    }
+
+    if (age < 1) {
+      fillColor = '#ef4444';
+      strokeColor = '#dc2626';
+      badgeBg = 'rgba(239, 68, 68, 0.2)';
+      badgeColor = '#ef4444';
+      classificationLabel = 'Active Landslide (<1 yr)';
+    } else if (age >= 1 && age <= 5) {
+      fillColor = '#f59e0b';
+      strokeColor = '#d97706';
+      badgeBg = 'rgba(245, 158, 11, 0.2)';
+      badgeColor = '#f59e0b';
+      classificationLabel = 'Old/Dormant Landslide (1-5 yrs)';
+    } else {
+      fillColor = '#3b82f6';
+      strokeColor = '#2563eb';
+      badgeBg = 'rgba(59, 130, 246, 0.2)';
+      badgeColor = '#3b82f6';
+      classificationLabel = 'Historical Landslide (>5 yrs)';
+    }
+
+    const marker = L.circleMarker(latlng, {
+      renderer: state.canvasRenderer,
+      radius: 5,
+      fillColor: fillColor,
+      color: strokeColor,
+      weight: 1,
+      opacity: 0.9,
+      fillOpacity: 0.7
+    });
+
+    // Build popup
+    const stateName = props.State || props.state || props.state_name || 'N/A';
+    const district = props.District || props.district || props.district__name || 'N/A';
+    const slideNo = props.SlideNo || props.slideno || props.id || 'N/A';
+    const area = props.Area_sqm || props.area_sqm || props.area || props.area_sq_m || 'N/A';
+    const trigger = props.Triggering || props.triggering || props.trigg_fact || 'Rainfall';
+    const geomorph = props.Geomorph || props.geomorph || 'N/A';
+    const lithology = props.Lithology || props.lithology || 'N/A';
+    const lulc = props.LULC || props.lulc || 'N/A';
+
+    const popupHtml = `
+      <div class="popup-card">
+        <span class="popup-tag" style="background: ${badgeBg}; color: ${badgeColor}; font-weight: 700;">
+          <i class="fa-solid fa-triangle-exclamation"></i> ${classificationLabel}
+        </span>
+        <h3>Landslide ${slideNo}</h3>
+        <div class="popup-meta">
+          <div><strong>Occurrence Year:</strong> <span style="color: var(--accent-amber); font-weight:700;">${yearVal}</span></div>
+          <div><strong>State:</strong> ${stateName}</div>
+          <div><strong>District:</strong> ${district}</div>
+          <div><strong>Area:</strong> ${typeof area === 'number' ? area.toLocaleString() + ' sq m' : area}</div>
+          <div><strong>Trigger Factor:</strong> ${trigger}</div>
+          ${geomorph !== 'N/A' ? `<div><strong>Geomorphology:</strong> ${geomorph}</div>` : ''}
+          ${lithology !== 'N/A' ? `<div><strong>Lithology:</strong> ${lithology}</div>` : ''}
+          ${lulc !== 'N/A' ? `<div><strong>Land Cover (LULC):</strong> ${lulc}</div>` : ''}
+        </div>
+      </div>
+    `;
+    marker.bindPopup(popupHtml);
+    state.landslidesLayer.addLayer(marker);
+  });
 
   if (shouldFitBounds && filteredFeatures.length > 0) {
-    const layerBounds = geoJsonLayer.getBounds();
-    if (layerBounds.isValid()) {
+    const layerBounds = state.landslidesLayer.getBounds();
+    if (layerBounds && layerBounds.isValid()) {
       state.map.fitBounds(layerBounds, { padding: [40, 40] });
     }
   }
@@ -783,4 +888,193 @@ function setupEventListeners() {
       toggleThemeBtn.innerHTML = isDark ? '<i class="fa-solid fa-moon"></i>' : '<i class="fa-solid fa-sun"></i>';
     });
   }
+}
+
+// Bhuvan Shortest Path Routing Event Listeners & Functions
+function setupRoutingEventListeners() {
+  const presetSelect = document.getElementById('route-preset-select');
+  const btnPickOrigin = document.getElementById('btn-pick-origin');
+  const btnPickDest = document.getElementById('btn-pick-dest');
+  const btnCalcRoute = document.getElementById('btn-calc-route');
+  const btnClearRoute = document.getElementById('btn-clear-route');
+
+  if (presetSelect) {
+    presetSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (!val) return;
+      const [orig, dest] = val.split('|');
+      const [oLat, oLng] = orig.split(',').map(Number);
+      const [dLat, dLng] = dest.split(',').map(Number);
+
+      state.routeOrigin = { lat: oLat, lng: oLng };
+      state.routeDest = { lat: dLat, lng: dLng };
+
+      const origInput = document.getElementById('route-origin');
+      const destInput = document.getElementById('route-dest');
+
+      if (origInput) origInput.value = `${oLat}, ${oLng}`;
+      if (destInput) destInput.value = `${dLat}, ${dLng}`;
+
+      updateRoutePickerMarkers();
+      fetchShortestPathRoute();
+    });
+  }
+
+  if (btnPickOrigin) {
+    btnPickOrigin.addEventListener('click', () => {
+      state.pickMode = 'origin';
+      setRouteStatus('Click anywhere on the map to set ORIGIN point...');
+    });
+  }
+
+  if (btnPickDest) {
+    btnPickDest.addEventListener('click', () => {
+      state.pickMode = 'dest';
+      setRouteStatus('Click anywhere on the map to set DESTINATION point...');
+    });
+  }
+
+  if (btnCalcRoute) {
+    btnCalcRoute.addEventListener('click', () => {
+      fetchShortestPathRoute();
+    });
+  }
+
+  if (btnClearRoute) {
+    btnClearRoute.addEventListener('click', () => {
+      clearRoute();
+    });
+  }
+}
+
+function setRouteStatus(msg, isError = false) {
+  const statusEl = document.getElementById('route-status-msg');
+  if (statusEl) {
+    statusEl.style.color = isError ? '#ef4444' : 'var(--text-muted)';
+    statusEl.innerHTML = msg;
+  }
+}
+
+function updateRoutePickerMarkers() {
+  if (!state.routeLayer) return;
+
+  // Preserve existing polylines, only refresh origin/destination pins if needed
+  if (!state.routeOrigin && !state.routeDest) {
+    state.routeLayer.clearLayers();
+    return;
+  }
+
+  // Clear point markers in routeLayer
+  state.routeLayer.eachLayer(l => {
+    if (l instanceof L.Marker) {
+      state.routeLayer.removeLayer(l);
+    }
+  });
+
+  if (state.routeOrigin) {
+    const origIcon = L.divIcon({
+      className: 'custom-marker route-origin-pin',
+      html: '<div style="background: #10b981; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 8px #10b981;"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+    const m = L.marker([state.routeOrigin.lat, state.routeOrigin.lng], { icon: origIcon });
+    m.bindPopup('<b>Origin Point</b><br>' + `${state.routeOrigin.lat}, ${state.routeOrigin.lng}`);
+    state.routeLayer.addLayer(m);
+  }
+
+  if (state.routeDest) {
+    const destIcon = L.divIcon({
+      className: 'custom-marker route-dest-pin',
+      html: '<div style="background: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 8px #ef4444;"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+    const m = L.marker([state.routeDest.lat, state.routeDest.lng], { icon: destIcon });
+    m.bindPopup('<b>Destination Point</b><br>' + `${state.routeDest.lat}, ${state.routeDest.lng}`);
+    state.routeLayer.addLayer(m);
+  }
+}
+
+function clearRoute() {
+  state.routeOrigin = null;
+  state.routeDest = null;
+  state.pickMode = null;
+  if (state.routeLayer) state.routeLayer.clearLayers();
+
+  const origInput = document.getElementById('route-origin');
+  const destInput = document.getElementById('route-dest');
+  const presetSelect = document.getElementById('route-preset-select');
+
+  if (origInput) origInput.value = '';
+  if (destInput) destInput.value = '';
+  if (presetSelect) presetSelect.value = '';
+
+  setRouteStatus('');
+}
+
+async function fetchShortestPathRoute() {
+  if (!state.routeOrigin || !state.routeDest) {
+    setRouteStatus('Please select both Origin and Destination first!', true);
+    return;
+  }
+
+  setRouteStatus('<i class="fa-solid fa-spinner fa-spin"></i> Calculating shortest path via Bhuvan API...');
+
+  try {
+    const url = `${API_BASE_URL}/api/route?lat1=${state.routeOrigin.lat}&lon1=${state.routeOrigin.lng}&lat2=${state.routeDest.lat}&lon2=${state.routeDest.lng}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.status === 'error' || !data.geojson) {
+      setRouteStatus(`<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> ${data.message || 'Routing failed.'}`, true);
+      return;
+    }
+
+    renderShortestPathRoute(data.geojson);
+  } catch (err) {
+    console.error('Error fetching Bhuvan route:', err);
+    setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Request failed to connect backend.', true);
+  }
+}
+
+function renderShortestPathRoute(geojson) {
+  if (!state.routeLayer || !geojson) return;
+
+  state.routeLayer.clearLayers();
+  updateRoutePickerMarkers();
+
+  const routeGeoJsonLayer = L.geoJSON(geojson, {
+    style: function() {
+      return {
+        color: '#06b6d4',
+        weight: 6,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round'
+      };
+    }
+  });
+
+  const casingLayer = L.geoJSON(geojson, {
+    style: function() {
+      return {
+        color: '#0284c7',
+        weight: 10,
+        opacity: 0.4,
+        lineCap: 'round',
+        lineJoin: 'round'
+      };
+    }
+  });
+
+  state.routeLayer.addLayer(casingLayer);
+  state.routeLayer.addLayer(routeGeoJsonLayer);
+
+  const bounds = routeGeoJsonLayer.getBounds();
+  if (bounds.isValid()) {
+    state.map.fitBounds(bounds, { padding: [50, 50] });
+  }
+
+  setRouteStatus('<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Bhuvan Shortest Path calculated & rendered!');
 }
