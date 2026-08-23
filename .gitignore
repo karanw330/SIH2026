@@ -1,0 +1,36 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# === Large Spatial Datasets (too big for git) ===
+*.osm.pbf
+*.geojson
+*.geojsonl
+
+# === IDE / Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Environment ===
+.env
+.env.*
+
+# === Logs ===
+*.log

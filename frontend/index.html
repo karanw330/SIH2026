@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>North East India OSM Spatial GIS Portal</title>
+  <meta name="description" content="Interactive spatial GIS map viewer for North East India converted OSM dataset using FastAPI and Leaflet.js" />
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <!-- Leaflet MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="dark-theme">
+  <div id="app">
+    <!-- Top Glassmorphism Header -->
+    <header class="top-header" id="main-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-map-location-dot"></i>
+        </div>
+        <div class="brand-text">
+          <h1>North East India GIS Portal</h1>
+          <span class="badge">Converted OSM Dataset</span>
+        </div>
+      </div>
+      
+      <!-- Quick Search Bar -->
+      <div class="header-search">
+        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        <input type="text" id="search-input" placeholder="Search feature name, ID, district..." autocomplete="off" />
+        <button id="clear-search-btn" class="icon-btn hidden" title="Clear Search"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="header-actions">
+        <button id="reset-bounds-btn" class="btn btn-secondary" title="Reset View Bounds">
+          <i class="fa-solid fa-crosshairs"></i> Reset View
+        </button>
+        <button id="toggle-theme-btn" class="icon-btn" title="Toggle Theme">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-content">
+      <!-- Floating Sidebar Controls -->
+      <aside class="control-panel glass-card" id="sidebar-controls">
+        <div class="panel-header">
+          <h2><i class="fa-solid fa-sliders"></i> Filter Controls</h2>
+          <button id="reset-filters-btn" class="text-btn">Reset All</button>
+        </div>
+
+        <div class="filter-group">
+          <label for="state-select"><i class="fa-solid fa-landmark"></i> State</label>
+          <select id="state-select" class="custom-select">
+            <option value="">All North East States (8)</option>
+            <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+            <option value="Assam">Assam</option>
+            <option value="Manipur">Manipur</option>
+            <option value="Meghalaya">Meghalaya</option>
+            <option value="Mizoram">Mizoram</option>
+            <option value="Nagaland">Nagaland</option>
+            <option value="Sikkim">Sikkim</option>
+            <option value="Tripura">Tripura</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="district-select"><i class="fa-solid fa-location-dot"></i> District</label>
+          <select id="district-select" class="custom-select">
+            <option value="">All Districts</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="year-select"><i class="fa-solid fa-calendar-days"></i> Occurrence Year</label>
+          <select id="year-select" class="custom-select">
+            <option value="">All Years</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label><i class="fa-solid fa-clock-rotate-left"></i> Timeline Quick Filter</label>
+          <div class="year-pills-container" id="year-pills-container">
+            <button class="year-pill active" data-year="">All</button>
+          </div>
+        </div>
+
+        <!-- Layer Toggle -->
+        <!-- Layer Toggle -->
+        <div class="filter-group">
+          <label><i class="fa-solid fa-layer-group"></i> Layer Controls</label>
+          <div class="toggle-list">
+            <label class="checkbox-label">
+              <input type="checkbox" id="toggle-stations" checked />
+              <span>OSM Vector Points / Features</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="toggle-landslides" checked />
+              <span><i class="fa-solid fa-triangle-exclamation" style="color: #ef4444;"></i> NDEM Landslide Polygons</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="toggle-hazard" checked />
+              <span><i class="fa-solid fa-shield-halved" style="color: #f59e0b;"></i> Hazard Zonation (Baseline Risk)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- KPI Metrics Grid -->
+        <div class="kpi-section">
+          <h3><i class="fa-solid fa-chart-pie"></i> Data Metrics</h3>
+          <div class="kpi-grid">
+            <div class="kpi-card accent-primary full-width">
+              <span class="kpi-value" id="kpi-total">--</span>
+              <span class="kpi-label">Total Spatial Features</span>
+            </div>
+            <div class="kpi-card accent-rose full-width">
+              <span class="kpi-value" id="kpi-landslides">--</span>
+              <span class="kpi-label">NDEM Landslide Polygons</span>
+            </div>
+            <div class="kpi-card accent-cyan">
+              <span class="kpi-value" id="kpi-states">8</span>
+              <span class="kpi-label">NE States</span>
+            </div>
+            <div class="kpi-card accent-emerald">
+              <span class="kpi-value" id="kpi-districts">--</span>
+              <span class="kpi-label">Districts</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Map Layer Switcher -->
+        <div class="filter-group">
+          <label><i class="fa-solid fa-globe"></i> Basemap Style</label>
+          <div class="layer-selector">
+            <button class="layer-btn active" data-layer="dark">Dark Matter</button>
+            <button class="layer-btn" data-layer="satellite">Satellite</button>
+            <button class="layer-btn" data-layer="street">Street</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Map Canvas -->
+      <div id="map-container">
+        <div id="map"></div>
+        
+        <!-- Legend Overlay -->
+        <div class="map-legend glass-card" id="map-legend">
+          <h4>Legend</h4>
+          <div class="legend-item">
+            <span class="legend-color surface-color"></span>
+            <span>OSM Point Feature</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color active-landslide-color"></span>
+            <span>Active Landslide Polygon</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color dormant-landslide-color"></span>
+            <span>Old/Dormant Landslide</span>
+          </div>
+          <div class="legend-divider" style="border-top: 1px solid rgba(255,255,255,0.1); margin: 6px 0;"></div>
+          <h5 style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Hazard Risk Baseline</h5>
+          <div class="legend-item">
+            <span class="legend-color hazard-high-color" style="background: rgba(239,68,68,0.7); border: 1px solid #ef4444;"></span>
+            <span>High Risk Zone</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color hazard-mod-color" style="background: rgba(245,158,11,0.7); border: 1px solid #f59e0b;"></span>
+            <span>Moderate Risk Zone</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color hazard-low-color" style="background: rgba(234,179,8,0.7); border: 1px solid #eab308;"></span>
+            <span>Low Risk Zone</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Details Drawer Modal -->
+    <div class="drawer-backdrop hidden" id="drawer-backdrop"></div>
+    <aside class="station-drawer glass-card hidden" id="station-drawer">
+      <div class="drawer-header">
+        <div>
+          <span class="drawer-tag" id="drawer-type-tag">OSM Feature</span>
+          <h2 id="drawer-station-name">Feature Details</h2>
+        </div>
+        <button id="close-drawer-btn" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="drawer-body">
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span class="detail-label">Feature ID / Code</span>
+            <span class="detail-val" id="detail-code">--</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">State</span>
+            <span class="detail-val" id="detail-state">--</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">District</span>
+            <span class="detail-val" id="detail-district">--</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Coordinates</span>
+            <span class="detail-val" id="detail-coords">--</span>
+          </div>
+          <div class="detail-item full-width">
+            <span class="detail-label">Data Source</span>
+            <span class="detail-val" id="detail-source">Converted OSM Dataset</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Leaflet MarkerCluster JS -->
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+  <!-- Application JS -->
+  <script src="js/app.js"></script>
+</body>
+</html>
