@@ -11,6 +11,8 @@ const state = {
   landslidesLayer: null,
   hazardLayer: null,
   routeLayer: null,
+  searchLayerGroup: null,
+  searchControl: null,
   routeOrigin: null,
   routeDest: null,
   pickMode: null,
@@ -36,7 +38,10 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchStatsAndDistricts();
   fetchGeoJSONData();
   fetchLandslidesData();
-  fetchHazardData();
+  const toggleHazard = document.getElementById('toggle-hazard');
+  if (toggleHazard && toggleHazard.checked) {
+    fetchHazardData();
+  }
   setupEventListeners();
   setupRoutingEventListeners();
 });
@@ -80,16 +85,50 @@ function initMap() {
   // Global Canvas Renderer for high-performance vector rendering
   state.canvasRenderer = L.canvas({ padding: 0.2 });
 
-  // Layer groups for Hazard Zonation, Landslide Polygons, and Shortest Path Route
+  // Layer groups for Hazard Zonation, Landslide Polygons, Shortest Path Route, and Search Features
   state.hazardLayer = L.layerGroup();
   state.landslidesLayer = L.layerGroup();
   state.routeLayer = L.layerGroup();
+  state.searchLayerGroup = L.layerGroup();
 
   // Order layers: Baseline Hazard Risk at bottom, Landslide Polygons, Route Line, Point Markers on top
   state.map.addLayer(state.hazardLayer);
   state.map.addLayer(state.landslidesLayer);
   state.map.addLayer(state.routeLayer);
   state.map.addLayer(state.markersLayer);
+  state.map.addLayer(state.searchLayerGroup);
+
+  // Initialize Leaflet Search Plugin Control
+  if (typeof L.Control.Search !== 'undefined' || typeof L.control.search !== 'undefined') {
+    const searchFactory = L.control.search || L.Control.Search;
+    state.searchControl = searchFactory({
+      layer: state.searchLayerGroup,
+      propertyName: 'name',
+      initial: false,
+      zoom: 14,
+      autoCollapse: true,
+      minLength: 2,
+      marker: false,
+      position: 'topleft',
+      textPlaceholder: 'Search features...'
+    });
+    state.map.addControl(state.searchControl);
+
+    state.searchControl.on('search:locationfound', (e) => {
+      if (e.layer) {
+        if (e.layer.openPopup) {
+          e.layer.openPopup();
+        }
+        const props = e.layer.featureData || (e.layer.feature && e.layer.feature.properties);
+        if (props) {
+          const fid = props.id || props.GmlID || props.SlideNo || props.slideno;
+          if (fid && typeof window.openFeatureDrawer === 'function') {
+            window.openFeatureDrawer(fid);
+          }
+        }
+      }
+    });
+  }
 
   // Map Click Listener for interactive Origin/Destination picking
   state.map.on('click', (e) => {
@@ -348,11 +387,12 @@ async function fetchHazardData() {
   }
 }
 
-// Render GeoJSON Features (OSM Vector Points) on Map
+// Render GeoJSON Features (OSM Vector Points) on Map using Hardware 2D Canvas
 function renderMapFeatures() {
   if (!state.currentGeoJSON || !state.markersLayer) return;
 
   state.markersLayer.clearLayers();
+  if (state.searchLayerGroup) state.searchLayerGroup.clearLayers();
 
   const toggleStations = document.getElementById('toggle-stations');
   const kpiTotal = document.getElementById('kpi-total');
@@ -390,33 +430,46 @@ function renderMapFeatures() {
 
   sampledItems.forEach(({ feat: feature, latlng }, index) => {
     const props = feature.properties || {};
-    const customIcon = L.divIcon({
-      className: 'custom-marker surface',
-      html: '<i class="fa-solid fa-location-dot"></i>',
-      iconSize: [26, 26],
-      iconAnchor: [13, 13]
+    const featureId = props.id || props.GmlID || `feat_${index}`;
+    const nameStr = props.name || props.station_name || `Feature #${featureId}`;
+
+    // Hardware Canvas CircleMarker for instant 60fps rendering
+    const marker = L.circleMarker(latlng, {
+      renderer: state.canvasRenderer,
+      radius: 6,
+      fillColor: '#0ea5e9',
+      color: '#0284c7',
+      weight: 1.5,
+      opacity: 0.9,
+      fillOpacity: 0.8
     });
 
-    const marker = L.marker(latlng, { icon: customIcon });
-    const featureId = props.id || props.GmlID || `feat_${index}`;
-
-    const popupHtml = `
-      <div class="popup-card">
-        <span class="popup-tag surface">${props.type || 'OSM Feature'}</span>
-        <h3>${props.name || props.station_name || `Feature #${featureId}`}</h3>
-        <div class="popup-meta">
-          <div><strong>ID:</strong> ${featureId}</div>
-          <div><strong>Coordinates:</strong> ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}</div>
-          ${props.state_name ? `<div><strong>State:</strong> ${props.state_name}</div>` : ''}
-          ${props.district__name ? `<div><strong>District:</strong> ${props.district__name}</div>` : ''}
-        </div>
-        <button class="popup-btn" onclick="openFeatureDrawer('${featureId}', ${index})">View Details</button>
-      </div>
-    `;
-
-    marker.bindPopup(popupHtml);
+    marker.options.name = nameStr;
     marker.featureData = props;
+    marker.feature = { properties: { name: nameStr, ...props } };
+
+    // Lazy Popup creation on click
+    marker.on('click', () => {
+      if (!marker.getPopup()) {
+        const popupHtml = `
+          <div class="popup-card">
+            <span class="popup-tag surface">${props.type || 'OSM Feature'}</span>
+            <h3>${nameStr}</h3>
+            <div class="popup-meta">
+              <div><strong>ID:</strong> ${featureId}</div>
+              <div><strong>Coordinates:</strong> ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}</div>
+              ${props.state_name ? `<div><strong>State:</strong> ${props.state_name}</div>` : ''}
+              ${props.district__name ? `<div><strong>District:</strong> ${props.district__name}</div>` : ''}
+            </div>
+            <button class="popup-btn" onclick="openFeatureDrawer('${featureId}', ${index})">View Details</button>
+          </div>
+        `;
+        marker.bindPopup(popupHtml).openPopup();
+      }
+    });
+
     state.markersLayer.addLayer(marker);
+    if (state.searchLayerGroup) state.searchLayerGroup.addLayer(marker);
   });
 
   updateKPICards();
@@ -525,10 +578,15 @@ function renderLandslideFeatures(shouldFitBounds = false) {
       fillOpacity: 0.7
     });
 
-    // Build popup
     const stateName = props.State || props.state || props.state_name || 'N/A';
     const district = props.District || props.district || props.district__name || 'N/A';
     const slideNo = props.SlideNo || props.slideno || props.id || 'N/A';
+    const nameStr = `Landslide ${slideNo} (${district})`;
+
+    marker.options.name = nameStr;
+    marker.featureData = props;
+    marker.feature = { properties: { name: nameStr, ...props } };
+
     const area = props.Area_sqm || props.area_sqm || props.area || props.area_sq_m || 'N/A';
     const trigger = props.Triggering || props.triggering || props.trigg_fact || 'Rainfall';
     const geomorph = props.Geomorph || props.geomorph || 'N/A';
@@ -555,6 +613,7 @@ function renderLandslideFeatures(shouldFitBounds = false) {
     `;
     marker.bindPopup(popupHtml);
     state.landslidesLayer.addLayer(marker);
+    if (state.searchLayerGroup) state.searchLayerGroup.addLayer(marker);
   });
 
   if (shouldFitBounds && filteredFeatures.length > 0) {
@@ -644,12 +703,23 @@ function renderHazardFeatures() {
 
 // Global function triggered from popup button
 window.openFeatureDrawer = function(featureId, index) {
-  if (!state.currentGeoJSON) return;
+  let feature = null;
+  let isLandslide = false;
 
-  const feature = state.currentGeoJSON.features.find((f, idx) => {
-    const p = f.properties || {};
-    return String(p.id || p.GmlID || `feat_${idx}`) === String(featureId);
-  });
+  if (state.currentGeoJSON && state.currentGeoJSON.features) {
+    feature = state.currentGeoJSON.features.find((f, idx) => {
+      const p = f.properties || {};
+      return String(p.id || p.GmlID || `feat_${idx}`) === String(featureId);
+    });
+  }
+
+  if (!feature && state.currentLandslidesGeoJSON && state.currentLandslidesGeoJSON.features) {
+    feature = state.currentLandslidesGeoJSON.features.find((f, idx) => {
+      const p = f.properties || {};
+      return String(p.SlideNo || p.slideno || p.id || `ls_${idx}`) === String(featureId);
+    });
+    if (feature) isLandslide = true;
+  }
 
   if (!feature) return;
 
@@ -663,20 +733,39 @@ window.openFeatureDrawer = function(featureId, index) {
   const drawerTag = document.getElementById('drawer-type-tag');
   const drawerName = document.getElementById('drawer-station-name');
 
-  if (detailCode) detailCode.textContent = props.id || props.GmlID || featureId;
-  if (detailState) detailState.textContent = props.state_name || state.activeFilters.state || 'N/A';
-  if (detailDistrict) detailDistrict.textContent = props.district__name || props.district || 'N/A';
+  if (isLandslide) {
+    const slideNo = props.SlideNo || props.slideno || props.id || featureId;
+    if (detailCode) detailCode.textContent = slideNo;
+    if (detailState) detailState.textContent = props.State || props.state || props.state_name || 'N/A';
+    if (detailDistrict) detailDistrict.textContent = props.District || props.district || props.district__name || 'N/A';
 
-  let lat = props.lat;
-  let lng = props.long;
-  if (geom.type === 'Point' && Array.isArray(geom.coordinates)) {
-    lng = geom.coordinates[0];
-    lat = geom.coordinates[1];
+    let lat, lng;
+    if (geom.type === 'Point' && Array.isArray(geom.coordinates)) {
+      [lng, lat] = geom.coordinates;
+    } else if (geom.type === 'Polygon' && geom.coordinates && geom.coordinates.length > 0) {
+      const ring = geom.coordinates[0];
+      lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+      lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+    }
+    if (detailCoords) detailCoords.textContent = `${lat ? lat.toFixed(4) : '--'}, ${lng ? lng.toFixed(4) : '--'}`;
+    if (drawerTag) drawerTag.textContent = 'NDEM Landslide';
+    if (drawerName) drawerName.textContent = `Landslide ${slideNo}`;
+  } else {
+    if (detailCode) detailCode.textContent = props.id || props.GmlID || featureId;
+    if (detailState) detailState.textContent = props.state_name || state.activeFilters.state || 'N/A';
+    if (detailDistrict) detailDistrict.textContent = props.district__name || props.district || 'N/A';
+
+    let lat = props.lat;
+    let lng = props.long;
+    if (geom.type === 'Point' && Array.isArray(geom.coordinates)) {
+      lng = geom.coordinates[0];
+      lat = geom.coordinates[1];
+    }
+
+    if (detailCoords) detailCoords.textContent = `${lat ? lat.toFixed(4) : '--'}, ${lng ? lng.toFixed(4) : '--'}`;
+    if (drawerTag) drawerTag.textContent = props.type || 'OSM Feature';
+    if (drawerName) drawerName.textContent = props.name || props.station_name || `Feature #${featureId}`;
   }
-
-  if (detailCoords) detailCoords.textContent = `${lat ? lat.toFixed(4) : '--'}, ${lng ? lng.toFixed(4) : '--'}`;
-  if (drawerTag) drawerTag.textContent = props.type || 'OSM Feature';
-  if (drawerName) drawerName.textContent = props.name || props.station_name || `Feature #${featureId}`;
 
   const drawerBackdrop = document.getElementById('drawer-backdrop');
   const stationDrawer = document.getElementById('station-drawer');
@@ -795,7 +884,15 @@ function setupEventListeners() {
 
   if (toggleHazard) {
     toggleHazard.addEventListener('change', () => {
-      renderHazardFeatures();
+      if (toggleHazard.checked) {
+        if (!state.currentHazardGeoJSON || !state.currentHazardGeoJSON.features || state.currentHazardGeoJSON.features.length === 0) {
+          fetchHazardData();
+        } else {
+          renderHazardFeatures();
+        }
+      } else {
+        renderHazardFeatures();
+      }
     });
   }
 
@@ -890,13 +987,15 @@ function setupEventListeners() {
   }
 }
 
-// Bhuvan Shortest Path Routing Event Listeners & Functions
+// Bhuvan & Custom Road Routing Event Listeners & Functions
 function setupRoutingEventListeners() {
   const presetSelect = document.getElementById('route-preset-select');
   const btnPickOrigin = document.getElementById('btn-pick-origin');
   const btnPickDest = document.getElementById('btn-pick-dest');
   const btnCalcRoute = document.getElementById('btn-calc-route');
   const btnClearRoute = document.getElementById('btn-clear-route');
+  const origInput = document.getElementById('route-origin');
+  const destInput = document.getElementById('route-dest');
 
   if (presetSelect) {
     presetSelect.addEventListener('change', (e) => {
@@ -909,9 +1008,6 @@ function setupRoutingEventListeners() {
       state.routeOrigin = { lat: oLat, lng: oLng };
       state.routeDest = { lat: dLat, lng: dLng };
 
-      const origInput = document.getElementById('route-origin');
-      const destInput = document.getElementById('route-dest');
-
       if (origInput) origInput.value = `${oLat}, ${oLng}`;
       if (destInput) destInput.value = `${dLat}, ${dLng}`;
 
@@ -920,22 +1016,53 @@ function setupRoutingEventListeners() {
     });
   }
 
+  // Handle direct text typing in Origin input
+  if (origInput) {
+    let origDebounce;
+    origInput.addEventListener('input', () => {
+      clearTimeout(origDebounce);
+      origDebounce = setTimeout(() => {
+        parseRouteInputField('origin', false);
+      }, 500);
+    });
+    origInput.addEventListener('change', () => {
+      parseRouteInputField('origin', true);
+    });
+  }
+
+  // Handle direct text typing in Destination input
+  if (destInput) {
+    let destDebounce;
+    destInput.addEventListener('input', () => {
+      clearTimeout(destDebounce);
+      destDebounce = setTimeout(() => {
+        parseRouteInputField('dest', false);
+      }, 500);
+    });
+    destInput.addEventListener('change', () => {
+      parseRouteInputField('dest', true);
+    });
+  }
+
   if (btnPickOrigin) {
     btnPickOrigin.addEventListener('click', () => {
       state.pickMode = 'origin';
-      setRouteStatus('Click anywhere on the map to set ORIGIN point...');
+      setRouteStatus('<i class="fa-solid fa-crosshairs"></i> Click anywhere on map to set <b>ORIGIN</b> point...');
     });
   }
 
   if (btnPickDest) {
     btnPickDest.addEventListener('click', () => {
       state.pickMode = 'dest';
-      setRouteStatus('Click anywhere on the map to set DESTINATION point...');
+      setRouteStatus('<i class="fa-solid fa-flag-checkered"></i> Click anywhere on map to set <b>DESTINATION</b> point...');
     });
   }
 
   if (btnCalcRoute) {
-    btnCalcRoute.addEventListener('click', () => {
+    btnCalcRoute.addEventListener('click', async () => {
+      // Ensure inputs are parsed before calculating
+      await parseRouteInputField('origin', true);
+      await parseRouteInputField('dest', true);
       fetchShortestPathRoute();
     });
   }
@@ -945,6 +1072,82 @@ function setupRoutingEventListeners() {
       clearRoute();
     });
   }
+}
+
+// Parse user entered coordinates or location name from origin/dest text fields
+async function parseRouteInputField(type, allowGeocode = true) {
+  const inputEl = document.getElementById(type === 'origin' ? 'route-origin' : 'route-dest');
+  if (!inputEl) return false;
+
+  const rawVal = inputEl.value.trim();
+  if (!rawVal) {
+    if (type === 'origin') state.routeOrigin = null;
+    else state.routeDest = null;
+    updateRoutePickerMarkers();
+    return false;
+  }
+
+  // 1. Try parsing Lat, Lng numeric coordinates (e.g. "26.1445, 91.7362" or "26.1445 91.7362")
+  const coordRegex = /^\s*(-?\d+(?:\.\d+)?)\s*[, \t]\s*(-?\d+(?:\.\d+)?)\s*$/;
+  const match = rawVal.match(coordRegex);
+
+  if (match) {
+    const lat = parseFloat(match[1]);
+    const lng = parseFloat(match[2]);
+
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      if (type === 'origin') {
+        state.routeOrigin = { lat, lng };
+      } else {
+        state.routeDest = { lat, lng };
+      }
+      updateRoutePickerMarkers();
+      return true;
+    }
+  }
+
+  // 2. If text is a place name and allowGeocode is true, try backend feature search or Nominatim geocoder
+  if (allowGeocode && rawVal.length >= 2) {
+    try {
+      // First search backend features
+      const searchRes = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(rawVal)}&limit=1`);
+      if (searchRes.ok) {
+        const data = await searchRes.json();
+        if (data.results && data.results.length > 0) {
+          const feat = data.results[0];
+          let lat = feat.lat;
+          let lng = feat.long;
+
+          if (typeof lat === 'number' && typeof lng === 'number') {
+            if (type === 'origin') state.routeOrigin = { lat, lng };
+            else state.routeDest = { lat, lng };
+            inputEl.value = `${feat.name || rawVal} (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+            updateRoutePickerMarkers();
+            return true;
+          }
+        }
+      }
+
+      // Fallback: OpenStreetMap Nominatim Geocoding API
+      const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(rawVal + ', North East India')}&limit=1`);
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        if (geoData && geoData.length > 0) {
+          const lat = parseFloat(geoData[0].lat);
+          const lng = parseFloat(geoData[0].lon);
+          if (type === 'origin') state.routeOrigin = { lat, lng };
+          else state.routeDest = { lat, lng };
+          inputEl.value = `${geoData[0].display_name.split(',')[0]} (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+          updateRoutePickerMarkers();
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn('Geocoding error:', err);
+    }
+  }
+
+  return false;
 }
 
 function setRouteStatus(msg, isError = false) {
@@ -958,12 +1161,6 @@ function setRouteStatus(msg, isError = false) {
 function updateRoutePickerMarkers() {
   if (!state.routeLayer) return;
 
-  // Preserve existing polylines, only refresh origin/destination pins if needed
-  if (!state.routeOrigin && !state.routeDest) {
-    state.routeLayer.clearLayers();
-    return;
-  }
-
   // Clear point markers in routeLayer
   state.routeLayer.eachLayer(l => {
     if (l instanceof L.Marker) {
@@ -974,9 +1171,9 @@ function updateRoutePickerMarkers() {
   if (state.routeOrigin) {
     const origIcon = L.divIcon({
       className: 'custom-marker route-origin-pin',
-      html: '<div style="background: #10b981; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 8px #10b981;"></div>',
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
+      html: '<div style="background: #10b981; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px #10b981;"></div>',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
     });
     const m = L.marker([state.routeOrigin.lat, state.routeOrigin.lng], { icon: origIcon });
     m.bindPopup('<b>Origin Point</b><br>' + `${state.routeOrigin.lat}, ${state.routeOrigin.lng}`);
@@ -986,9 +1183,9 @@ function updateRoutePickerMarkers() {
   if (state.routeDest) {
     const destIcon = L.divIcon({
       className: 'custom-marker route-dest-pin',
-      html: '<div style="background: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 8px #ef4444;"></div>',
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
+      html: '<div style="background: #ef4444; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px #ef4444;"></div>',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
     });
     const m = L.marker([state.routeDest.lat, state.routeDest.lng], { icon: destIcon });
     m.bindPopup('<b>Destination Point</b><br>' + `${state.routeDest.lat}, ${state.routeDest.lng}`);
@@ -1014,12 +1211,16 @@ function clearRoute() {
 }
 
 async function fetchShortestPathRoute() {
+  // Try parsing fields if state is not set yet
+  if (!state.routeOrigin) await parseRouteInputField('origin', true);
+  if (!state.routeDest) await parseRouteInputField('dest', true);
+
   if (!state.routeOrigin || !state.routeDest) {
-    setRouteStatus('Please select both Origin and Destination first!', true);
+    setRouteStatus('<i class="fa-solid fa-triangle-exclamation"></i> Please enter or pick valid Origin and Destination first!', true);
     return;
   }
 
-  setRouteStatus('<i class="fa-solid fa-spinner fa-spin"></i> Calculating shortest path via Bhuvan API...');
+  setRouteStatus('<i class="fa-solid fa-spinner fa-spin"></i> Calculating shortest path road route...');
 
   try {
     const url = `${API_BASE_URL}/api/route?lat1=${state.routeOrigin.lat}&lon1=${state.routeOrigin.lng}&lat2=${state.routeDest.lat}&lon2=${state.routeDest.lng}`;
@@ -1031,17 +1232,23 @@ async function fetchShortestPathRoute() {
       return;
     }
 
-    renderShortestPathRoute(data.geojson);
+    renderShortestPathRoute(data.geojson, data);
   } catch (err) {
-    console.error('Error fetching Bhuvan route:', err);
+    console.error('Error fetching route:', err);
     setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Request failed to connect backend.', true);
   }
 }
 
-function renderShortestPathRoute(geojson) {
+function renderShortestPathRoute(geojson, metadata = {}) {
   if (!state.routeLayer || !geojson) return;
 
-  state.routeLayer.clearLayers();
+  // Clear existing line layers from routeLayer while preserving pins
+  state.routeLayer.eachLayer(l => {
+    if (l instanceof L.Polyline || l instanceof L.GeoJSON) {
+      state.routeLayer.removeLayer(l);
+    }
+  });
+
   updateRoutePickerMarkers();
 
   const routeGeoJsonLayer = L.geoJSON(geojson, {
@@ -1076,5 +1283,9 @@ function renderShortestPathRoute(geojson) {
     state.map.fitBounds(bounds, { padding: [50, 50] });
   }
 
-  setRouteStatus('<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Bhuvan Shortest Path calculated & rendered!');
+  const distText = metadata.distance_km ? ` | <b>${metadata.distance_km} km</b>` : '';
+  const durText = metadata.duration_min ? ` (~${metadata.duration_min} mins)` : '';
+  const providerText = metadata.provider ? ` via ${metadata.provider}` : '';
+
+  setRouteStatus(`<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Route calculated!${distText}${durText}${providerText}`);
 }
