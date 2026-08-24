@@ -15,6 +15,7 @@ env/
 *.osm.pbf
 *.geojson
 *.geojsonl
+*.tif
 
 # === IDE / Editor ===
 .vscode/

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   North East GIS Portal - Design Tokens & Styles
+   North East GIS Portal (Proto2) - WebGL & Deck.gl Styling
    ========================================================================== */
 
 :root {
@@ -113,14 +113,14 @@ body {
 .brand-icon {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan));
+  background: linear-gradient(135deg, #0ea5e9, #a855f7);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-size: 1.2rem;
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 15px rgba(14, 165, 233, 0.4);
 }
 
 .brand-text h1 {
@@ -129,6 +129,20 @@ body {
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.proto-tag {
+  font-size: 0.65rem;
+  background: linear-gradient(90deg, #ec4899, #8b5cf6);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .badge {
@@ -329,32 +343,6 @@ body {
   border-color: var(--accent-primary);
 }
 
-.type-pills {
-  display: flex;
-  gap: 6px;
-}
-
-.pill {
-  flex: 1;
-  padding: 8px 6px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition-fast);
-  text-align: center;
-}
-
-.pill.active {
-  background: var(--accent-primary);
-  color: white;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 10px rgba(99, 102, 241, 0.4);
-}
-
 .year-pills-container {
   display: flex;
   flex-wrap: wrap;
@@ -503,6 +491,23 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+.popup-btn {
+  padding: 6px 12px;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: var(--transition-fast);
+}
+
+.popup-btn:hover {
+  background: var(--accent-primary-hover);
+}
+
 /* Map Container */
 #map-container {
   flex: 1;
@@ -549,112 +554,29 @@ body {
   display: inline-block;
 }
 
-.surface-color { background: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan); }
-.ground-color { background: var(--accent-amber); box-shadow: 0 0 8px var(--accent-amber); }
-.osm-color { background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
-.active-landslide-color { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
-.dormant-landslide-color { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
-.telemetry-badge {
-  color: var(--accent-emerald);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.85rem;
-}
-
-/* Custom Marker Styling */
-.custom-marker {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: white;
-  font-size: 0.7rem;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
-  transition: transform 0.2s ease;
-}
-
-.custom-marker:hover {
-  transform: scale(1.3);
-  z-index: 1000 !important;
-}
-
-.custom-marker.surface {
-  background: var(--accent-cyan);
-  border: 2px solid white;
-}
-
-.custom-marker.ground {
-  background: var(--accent-amber);
-  border: 2px solid white;
-}
-
-/* Leaflet Popup Styling Override */
-.leaflet-popup-content-wrapper {
-  background: rgba(15, 23, 42, 0.92) !important;
-  backdrop-filter: blur(12px) !important;
-  color: var(--text-primary) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: var(--radius-md) !important;
-  box-shadow: var(--shadow-lg) !important;
-  padding: 4px;
-}
-
-.leaflet-popup-tip {
-  background: rgba(15, 23, 42, 0.92) !important;
-}
-
-.popup-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  min-width: 220px;
-}
-
-.popup-tag {
-  align-self: flex-start;
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-}
-
-.popup-tag.surface { background: rgba(6, 182, 212, 0.2); color: var(--accent-cyan); }
-.popup-tag.ground { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
-
-.popup-card h3 {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
-  font-weight: 600;
+/* Deck.gl Hover Tooltip */
+.deck-tooltip {
+  position: absolute;
+  z-index: 2000;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--text-primary);
-  margin-bottom: 2px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.8rem;
+  transform: translate(-50%, -120%);
+  transition: opacity 0.1s ease;
 }
 
-.popup-meta {
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.popup-btn {
-  margin-top: 6px;
-  padding: 6px 12px;
-  background: var(--accent-primary);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: center;
-  transition: var(--transition-fast);
-}
-
-.popup-btn:hover {
-  background: var(--accent-primary-hover);
+.deck-tooltip h4 {
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+  color: #38bdf8;
 }
 
 /* Station Details Drawer */
@@ -745,102 +667,29 @@ body {
   display: none !important;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .top-header {
-    padding: 0 12px;
-  }
-  .header-search {
-    width: 180px;
-  }
-  .control-panel {
-    width: 90%;
-    left: 5%;
-    top: 72px;
-  }
-  .station-drawer {
-    width: 90%;
-    right: 5%;
-  }
+/* MapLibre Custom Raster Popup Styling */
+.maplibregl-popup.custom-raster-popup .maplibregl-popup-content {
+  background: rgba(15, 23, 42, 0.92) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  padding: 10px 14px;
 }
 
-/* Leaflet Search Custom Glassmorphism Styling */
-.leaflet-control-search {
-  background: var(--bg-surface) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: var(--radius-md) !important;
-  box-shadow: var(--shadow-lg) !important;
-  padding: 3px !important;
-  transition: var(--transition-fast) !important;
+.maplibregl-popup.custom-raster-popup .maplibregl-popup-tip {
+  border-top-color: rgba(15, 23, 42, 0.92) !important;
+  border-bottom-color: rgba(15, 23, 42, 0.92) !important;
 }
 
-.leaflet-control-search .search-input {
-  height: 32px !important;
-  padding: 0 10px !important;
-  border-radius: var(--radius-sm) !important;
-  border: 1px solid var(--border-color) !important;
-  background: var(--bg-card) !important;
-  color: var(--text-primary) !important;
-  font-family: var(--font-main) !important;
-  font-size: 0.82rem !important;
-  outline: none !important;
-  margin: 0 4px !important;
+.maplibregl-popup-close-button {
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  padding: 4px 8px;
 }
-
-.leaflet-control-search .search-input:focus {
-  border-color: var(--accent-primary) !important;
+.maplibregl-popup-close-button:hover {
+  color: #fff;
+  background: transparent;
 }
-
-.leaflet-control-search .search-button {
-  width: 32px !important;
-  height: 32px !important;
-  border-radius: var(--radius-sm) !important;
-  background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="%2394a3b8" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>') no-repeat 50% 50% !important;
-  background-size: 18px 18px !important;
-  border: none !important;
-  cursor: pointer !important;
-}
-
-.leaflet-control-search .search-button:hover {
-  background-color: var(--bg-card-hover) !important;
-}
-
-.leaflet-control-search .search-cancel {
-  right: 36px !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  opacity: 0.7 !important;
-}
-
-.leaflet-control-search .search-tooltip {
-  background: var(--bg-surface) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: var(--radius-sm) !important;
-  box-shadow: var(--shadow-lg) !important;
-  color: var(--text-primary) !important;
-  max-height: 200px !important;
-  overflow-y: auto !important;
-  padding: 4px 0 !important;
-  margin-top: 4px !important;
-}
-
-.leaflet-control-search .search-tip {
-  padding: 6px 12px !important;
-  font-size: 0.8rem !important;
-  color: var(--text-primary) !important;
-  background: transparent !important;
-  border-radius: 4px !important;
-  cursor: pointer !important;
-  margin: 2px 4px !important;
-}
-
-.leaflet-control-search .search-tip-select,
-.leaflet-control-search .search-tip:hover {
-  background: var(--accent-primary) !important;
-  color: #ffffff !important;
-}
-

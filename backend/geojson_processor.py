@@ -85,7 +85,33 @@ FALLBACK_NE_FEATURES = [
     {"type": "Feature", "geometry": {"type": "Point", "coordinates": [94.1770, 26.9538]}, "properties": {"id": "NE_14", "name": "Majuli River Island Node", "type": "Inland Island Point", "state_name": "Assam", "district__name": "Majuli"}}
 ]
 
+def parse_bbox(bbox_str: str):
+    if not bbox_str:
+        return None
+    try:
+        parts = [float(x.strip()) for x in bbox_str.split(",")]
+        if len(parts) == 4:
+            return parts  # [min_lng, min_lat, max_lng, max_lat]
+    except Exception:
+        pass
+    return None
+
+def is_in_bbox(lat: float, lng: float, bbox: list) -> bool:
+    if bbox is None or lat is None or lng is None:
+        return True
+    return bbox[0] <= lng <= bbox[2] and bbox[1] <= lat <= bbox[3]
+
+def bbox_intersects(feat_bbox: tuple, bbox: list) -> bool:
+    # feat_bbox: (min_lat, max_lat, min_lng, max_lng)
+    # bbox: [min_lng, min_lat, max_lng, max_lat]
+    if not feat_bbox or not bbox:
+        return True
+    f_min_lat, f_max_lat, f_min_lng, f_max_lng = feat_bbox
+    b_min_lng, b_min_lat, b_max_lng, b_max_lat = bbox
+    return not (f_max_lng < b_min_lng or f_min_lng > b_max_lng or f_max_lat < b_min_lat or f_min_lat > b_max_lat)
+
 class GeoJSONProcessor:
+
     def __init__(self, filepath: str = None):
         if filepath is None:
             ne_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "northeast_osm.geojson"))
@@ -491,8 +517,9 @@ class GeoJSONProcessor:
         except Exception as e:
             print(f"Error loading hazard dataset: {e}")
 
-    def get_hazard_geojson(self, state: str = None, district: str = None, bbox: str = None, zoom: int = None) -> Dict[str, Any]:
-        """Returns Hazard Zonation GeoJSON collection (100% features, no zoom/bbox clipping)."""
+    def get_hazard_geojson(self, state: str = None, district: str = None, bbox: str = None, limit: int = None, zoom: int = None) -> Dict[str, Any]:
+        """Returns Hazard Zonation GeoJSON collection with state and bbox filtering."""
+        parsed_bbox = parse_bbox(bbox)
         filtered = []
         for feat in self.hazard_features:
             props = feat.get("properties", {})
@@ -502,18 +529,25 @@ class GeoJSONProcessor:
             if state and st_norm and st_norm != normalize_state_name(state).strip().lower():
                 continue
 
+            if parsed_bbox and not bbox_intersects(feat.get("_bbox"), parsed_bbox):
+                continue
+
             filtered.append(feat)
+            if limit and len(filtered) >= limit:
+                break
 
         return {
             "type": "FeatureCollection",
             "features": filtered
         }
 
-    def get_landslides_geojson(self, state: str = None, district: str = None, year: str = None, bbox: str = None, mode: str = "polygon", zoom: int = None) -> Dict[str, Any]:
-        """Returns Landslides GeoJSON collection filtered strictly by state, district, or year (no zoom/bbox dependencies)."""
+    def get_landslides_geojson(self, state: str = None, district: str = None, year: str = None, bbox: str = None, limit: int = None, mode: str = "polygon", zoom: int = None) -> Dict[str, Any]:
+        """Returns Landslides GeoJSON collection filtered by state, district, year, bbox, or limit."""
+        parsed_bbox = parse_bbox(bbox)
+        target_features = getattr(self, 'landslide_centroid_features', self.landslide_features) if mode == "centroid" else self.landslide_features
         filtered = []
 
-        for feat in self.landslide_features:
+        for feat in target_features:
             props = feat.get("properties", {})
             st_raw = str(props.get("State", props.get("state", props.get("state_name", ""))))
             st_norm = normalize_state_name(st_raw).strip().lower()
@@ -528,7 +562,15 @@ class GeoJSONProcessor:
             if year and yr != year.strip().lower():
                 continue
 
+            if parsed_bbox:
+                if "_bbox" in feat and not bbox_intersects(feat["_bbox"], parsed_bbox):
+                    continue
+                elif "_centroid" in feat and not is_in_bbox(feat["_centroid"][0], feat["_centroid"][1], parsed_bbox):
+                    continue
+
             filtered.append(feat)
+            if limit and len(filtered) >= limit:
+                break
 
         return {
             "type": "FeatureCollection",
@@ -575,27 +617,40 @@ class GeoJSONProcessor:
         }
         self.is_loaded = True
 
-    def get_northeast_geojson(self, state: str = None, district: str = None, zoom: int = None) -> Dict[str, Any]:
-        """Returns GeoJSON optionally filtered by state, district, or adaptive zoom sampling."""
-        if not state and not district and (zoom is None or zoom >= 9):
+    def get_northeast_geojson(self, state: str = None, district: str = None, bbox: str = None, limit: int = None, zoom: int = None) -> Dict[str, Any]:
+        """Returns GeoJSON optionally filtered by state, district, bbox, or limit."""
+        parsed_bbox = parse_bbox(bbox)
+        if not state and not district and not parsed_bbox and not limit and (zoom is None or zoom >= 9):
             return self.northeast_geojson
 
         filtered = []
         for feat in self.features:
             props = feat.get("properties", {})
+            geom = feat.get("geometry", {})
             
             if state and str(props.get("state_name", props.get("state", ""))).strip().lower() != state.strip().lower():
                 continue
             if district and str(props.get("district__name", props.get("district", ""))).strip().lower() != district.strip().lower():
                 continue
 
+            if parsed_bbox:
+                lat = props.get("lat")
+                long_val = props.get("long")
+                if (lat is None or long_val is None) and geom.get("type") == "Point" and isinstance(geom.get("coordinates"), list) and len(geom["coordinates"]) >= 2:
+                    long_val, lat = geom["coordinates"][0], geom["coordinates"][1]
+                if lat is not None and long_val is not None and not is_in_bbox(lat, long_val, parsed_bbox):
+                    continue
+
             filtered.append(feat)
+            if limit and len(filtered) >= limit:
+                break
 
         return {
             "type": "FeatureCollection",
             "crs": self.northeast_geojson.get("crs"),
             "features": filtered
         }
+
 
     def search_stations(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
         """Search features by name, id, district, or type."""
