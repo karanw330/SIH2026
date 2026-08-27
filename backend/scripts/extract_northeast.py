@@ -10,7 +10,7 @@ NORTHEAST_STATES = {
 NORTHEAST_CODES = {"AR", "AS", "MN", "ML", "MZ", "NL", "SK", "TR"}
 
 def extract_northeast_features():
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     src_file = os.path.join(root_dir, "converted_osm.geojson")
     dest_file = os.path.join(root_dir, "northeast_osm.geojson")
 

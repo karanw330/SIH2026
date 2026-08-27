@@ -383,6 +383,7 @@ class GeoTIFFProcessor:
             return {
                 "latitude": lat,
                 "longitude": lon,
+                "susceptibility_score": base_score,
                 "probability_score": base_score,
                 "percentage": f"{round(base_score * 100, 2)}%",
                 "risk_category": cat,
@@ -409,6 +410,7 @@ class GeoTIFFProcessor:
                     return {
                         "latitude": lat,
                         "longitude": lon,
+                        "susceptibility_score": round(val, 4),
                         "probability_score": round(val, 4),
                         "percentage": f"{round(val * 100, 2)}%",
                         "risk_category": cat,

@@ -1,3 +1,5 @@
+import sys
+import subprocess
 import os
 import json
 from typing import Optional
@@ -8,16 +10,33 @@ from geojson_processor import processor
 from tif_processor import tif_processor
 from fastapi.responses import FileResponse
 
+# --------------------------------------------------------------------------
+# Root Directory Setup
+# --------------------------------------------------------------------------
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+proto2_dir = os.path.join(root_dir, "proto2")
+frontend_dir = os.path.join(root_dir, "frontend")
+chatbot_dir = os.path.join(root_dir, "Chatbot")
+
+if chatbot_dir not in sys.path:
+    sys.path.insert(0, chatbot_dir)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🚀 Loading spatial vector datasets and GeoTIFF rasters during application startup...")
     processor.load_data()
-    processor.load_landslides_data()
-    processor.load_hazard_data()
     try:
         tif_processor.load_and_process()
     except Exception as e:
         print(f"⚠️ GeoTIFF processor initialization note: {e}")
+
+    # Ensure hero-bg.jpg is synced to frontend/images/
+    import shutil
+    src_hero = os.path.join(root_dir, "hero-bg.jpg")
+    dest_hero_dir = os.path.join(frontend_dir, "images")
+    if os.path.exists(src_hero):
+        os.makedirs(dest_hero_dir, exist_ok=True)
+        shutil.copy(src_hero, os.path.join(dest_hero_dir, "hero-bg.jpg"))
     yield
 
 app = FastAPI(
@@ -36,8 +55,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def read_root():
+@app.get("/api/info")
+def read_api_info():
     return {
         "title": "North East Region Spatial Data API",
         "status": "online",
@@ -87,6 +106,118 @@ def get_hazard_geojson(
     """Returns GeoJSON feature collection for NDEM Landslide Hazard Zonation (nerlhz50dsc)."""
     return processor.get_hazard_geojson(state=state, district=district, bbox=bbox, limit=limit, zoom=zoom)
 
+def analyze_route_hazard_segments(route_geojson):
+    """
+    Samples coordinates along route geometry against 563MB GeoTIFF susceptibility raster.
+    Extracts critical sub-segments (susceptibility score >= 0.75) and formats risk stats.
+    """
+    if not route_geojson or "features" not in route_geojson or not route_geojson["features"]:
+        return route_geojson, {
+            "has_critical_hazards": False,
+            "max_susceptibility": 0.0,
+            "critical_hazard_segments": [],
+            "critical_segments_geojson": None,
+            "critical_sectors_count": 0
+        }
+
+    feature = route_geojson["features"][0]
+    geom = feature.get("geometry", {})
+    coords = geom.get("coordinates", [])
+
+    if not coords or geom.get("type") != "LineString":
+        return route_geojson, {
+            "has_critical_hazards": False,
+            "max_susceptibility": 0.0,
+            "critical_hazard_segments": [],
+            "critical_segments_geojson": None,
+            "critical_sectors_count": 0
+        }
+
+    # Sample points along route (max ~250 points for high performance)
+    step = max(1, len(coords) // 250)
+    sampled_indices = list(range(0, len(coords), step))
+    if (len(coords) - 1) not in sampled_indices:
+        sampled_indices.append(len(coords) - 1)
+
+    max_score = 0.0
+    critical_indices = set()
+
+    for idx in sampled_indices:
+        lon, lat = coords[idx][0], coords[idx][1]
+        res = tif_processor.query_susceptibility(lat, lon)
+        score = res.get("susceptibility_score", 0.0)
+        if score > max_score:
+            max_score = round(score, 4)
+        if score >= 0.75:
+            critical_indices.add(idx)
+
+    # Group consecutive critical indices into continuous sub-line segments
+    critical_sublines = []
+    if critical_indices:
+        sorted_crit = sorted(list(critical_indices))
+        current_group = [sorted_crit[0]]
+        for i in range(1, len(sorted_crit)):
+            if sorted_crit[i] - sorted_crit[i-1] <= step * 2:
+                current_group.append(sorted_crit[i])
+            else:
+                start_idx = max(0, current_group[0] - 1)
+                end_idx = min(len(coords), current_group[-1] + 2)
+                critical_sublines.append(coords[start_idx:end_idx])
+                current_group = [sorted_crit[i]]
+        if current_group:
+            start_idx = max(0, current_group[0] - 1)
+            end_idx = min(len(coords), current_group[-1] + 2)
+            critical_sublines.append(coords[start_idx:end_idx])
+
+    critical_features = []
+    critical_segments_info = []
+
+    for i, line_coords in enumerate(critical_sublines):
+        seg_scores = [tif_processor.query_susceptibility(c[1], c[0]).get("susceptibility_score", 0.75) for c in line_coords]
+        peak_seg_score = round(max(seg_scores), 4) if seg_scores else 0.75
+        mid_pt = line_coords[len(line_coords) // 2]
+        
+        crit_feat = {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": line_coords
+            },
+            "properties": {
+                "segment_id": f"CRIT-SEG-{i+1}",
+                "susceptibility_score": peak_seg_score,
+                "risk_category": "Critical Hazard (≥ 0.75)",
+                "midpoint": [mid_pt[1], mid_pt[0]]
+            }
+        }
+        critical_features.append(crit_feat)
+        critical_segments_info.append({
+            "segment_id": f"CRIT-SEG-{i+1}",
+            "susceptibility_score": peak_seg_score,
+            "coords": [mid_pt[1], mid_pt[0]]
+        })
+
+    crit_geojson = {
+        "type": "FeatureCollection",
+        "features": critical_features
+    } if critical_features else None
+
+    has_critical = len(critical_features) > 0
+
+    route_geojson["features"][0]["properties"]["max_susceptibility"] = max_score
+    route_geojson["features"][0]["properties"]["has_critical_hazards"] = has_critical
+    route_geojson["features"][0]["properties"]["critical_sectors_count"] = len(critical_features)
+
+    analysis_result = {
+        "has_critical_hazards": has_critical,
+        "max_susceptibility": max_score,
+        "critical_sectors_count": len(critical_features),
+        "critical_hazard_segments": critical_segments_info,
+        "critical_segments_geojson": crit_geojson
+    }
+
+    return route_geojson, analysis_result
+
 @app.get("/api/route")
 def get_shortest_path(
     lat1: float = Query(..., description="Origin latitude"),
@@ -94,7 +225,7 @@ def get_shortest_path(
     lat2: float = Query(..., description="Destination latitude"),
     lon2: float = Query(..., description="Destination longitude")
 ):
-    """Proxies Bhuvan Shortest Path Routing API with automatic OSRM fallback."""
+    """Proxies Bhuvan Shortest Path Routing API with automatic OSRM fallback & GeoTIFF critical hazard analysis."""
     import urllib.request
     import urllib.parse
 
@@ -118,12 +249,14 @@ def get_shortest_path(
                             }
                         }]
                     }
+                    geojson, hazard_analysis = analyze_route_hazard_segments(geojson)
                     return {
                         "status": "success",
                         "provider": "OSRM Routing Engine",
                         "geojson": geojson,
                         "distance_km": round(route.get("distance", 0) / 1000, 2),
-                        "duration_min": round(route.get("duration", 0) / 60, 1)
+                        "duration_min": round(route.get("duration", 0) / 60, 1),
+                        **hazard_analysis
                     }
         except Exception as oe:
             print(f"OSRM fallback failed: {oe}")
@@ -144,10 +277,12 @@ def get_shortest_path(
                     try:
                         data = json.loads(body)
                         if data and not (isinstance(data, dict) and data.get("status") == "error"):
+                            data, hazard_analysis = analyze_route_hazard_segments(data)
                             return {
                                 "status": "success",
                                 "provider": "Bhuvan Routing API",
-                                "geojson": data
+                                "geojson": data,
+                                **hazard_analysis
                             }
                     except Exception:
                         pass
@@ -236,15 +371,192 @@ def query_raster_point(
     """Queries exact continuous probability score (0.0 to 1.0) for a specific lat/lon coordinate."""
     return tif_processor.query_susceptibility(lat=lat, lon=lon)
 
-# Serve static frontend & proto2 files directly from FastAPI backend
-from fastapi.staticfiles import StaticFiles
+# --------------------------------------------------------------------------
+# AI Chatbot Agent REST API Endpoints
+# --------------------------------------------------------------------------
+from pydantic import BaseModel, Field
+from fastapi import UploadFile, File
 
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-proto2_dir = os.path.join(root_dir, "proto2")
-frontend_dir = os.path.join(root_dir, "frontend")
+try:
+    from tools.reroute_corridor_tool import reroute_corridor_tool
+    from tools.localized_alert_dispatch_tool import localized_alert_dispatch_tool
+    from tools.resource_allocation_tool import resource_allocation_tool
+except Exception as ie:
+    print(f"⚠️ Chatbot tools import note: {ie}")
+
+class RerouteRequest(BaseModel):
+    origin: list[float] = Field(..., description="[latitude, longitude]")
+    destination: list[float] = Field(..., description="[latitude, longitude]")
+    hazardous_polygons: Optional[list[str]] = Field(default=["NE_HAZ_402"])
+
+class AlertDispatchRequest(BaseModel):
+    district_name: str
+    risk_score: float
+    hazard_type: Optional[str] = "Landslide Warning"
+
+class ResourceAllocationRequest(BaseModel):
+    photo_gps_coords: list[float] = Field(..., description="[latitude, longitude]")
+    search_radius_km: Optional[float] = 25.0
+
+@app.post("/api/agent/reroute")
+def api_agent_reroute(req: RerouteRequest):
+    """Recalculates safe corridor route bypassing landslide hazards."""
+    res_str = reroute_corridor_tool(req.origin, req.destination, req.hazardous_polygons or [])
+    return json.loads(res_str)
+
+@app.post("/api/agent/dispatch-alert")
+def api_agent_dispatch_alert(req: AlertDispatchRequest):
+    """Generates localized SMS templates in English, Assamese, Khasi, and Hindi."""
+    res_str = localized_alert_dispatch_tool(req.district_name, req.risk_score, req.hazard_type)
+    return json.loads(res_str)
+
+@app.post("/api/agent/resources")
+def api_agent_resources(req: ResourceAllocationRequest):
+    """Queries nearest disaster management assets around given coordinates."""
+    res_str = resource_allocation_tool(req.photo_gps_coords, req.search_radius_km or 25.0)
+    return json.loads(res_str)
+
+@app.post("/api/agent/upload-incident")
+async def api_agent_upload_incident(file: UploadFile = File(...)):
+    """Parses uploaded incident photo EXIF GPS data, queries point risk & nearby emergency resources."""
+    from PIL import Image
+    from PIL.ExifTags import TAGS, GPSTAGS
+    import io
+
+    def get_decimal_from_dms(dms, ref):
+        degrees, minutes, seconds = dms
+        decimal = float(degrees) + float(minutes)/60.0 + float(seconds)/3600.0
+        if ref in ['S', 'W']:
+            decimal = -decimal
+        return decimal
+
+    content = await file.read()
+    coords = None
+    try:
+        image = Image.open(io.BytesIO(content))
+        exif_data = image._getexif()
+        if exif_data:
+            gps_info = {}
+            for tag, value in exif_data.items():
+                tag_name = TAGS.get(tag, tag)
+                if tag_name == "GPSInfo":
+                    for key in value:
+                        sub_tag = GPSTAGS.get(key, key)
+                        gps_info[sub_tag] = value[key]
+            if "GPSLatitude" in gps_info and "GPSLongitude" in gps_info:
+                lat = get_decimal_from_dms(gps_info["GPSLatitude"], gps_info.get("GPSLatitudeRef", "N"))
+                lng = get_decimal_from_dms(gps_info["GPSLongitude"], gps_info.get("GPSLongitudeRef", "E"))
+                coords = [lat, lng]
+    except Exception as e:
+        print(f"EXIF parsing note: {e}")
+
+    if not coords:
+        return {
+            "filename": file.filename,
+            "has_exif_gps": False,
+            "extracted_coords": None,
+            "error": "No EXIF GPS metadata found in this photo. Geotags are typically missing if photos are saved via chat apps or web exports. Please upload a raw camera photo captured with location/GPS enabled."
+        }
+
+    point_susceptibility = tif_processor.query_susceptibility(lat=coords[0], lon=coords[1])
+    res_str = resource_allocation_tool(coords, 25.0)
+    resources_data = json.loads(res_str)
+
+    return {
+        "filename": file.filename,
+        "has_exif_gps": True,
+        "extracted_coords": coords,
+        "susceptibility_assessment": point_susceptibility,
+        "emergency_allocation": resources_data
+    }
+
+# --------------------------------------------------------------------------
+# Pinpointed Incident Reporting Endpoints
+# --------------------------------------------------------------------------
+import time
+
+field_incidents = []
+
+class IncidentReportRequest(BaseModel):
+    category: str
+    custom_message: Optional[str] = None
+    coords: list[float]
+    photo_filename: Optional[str] = None
+
+@app.post("/api/agent/report-incident")
+def api_agent_report_incident(req: IncidentReportRequest):
+    """Submits a pinpointed field incident report with category, custom message, GPS coordinates, date, and time."""
+    incident_id = f"INC-{len(field_incidents) + 101}"
+    desc = req.custom_message.strip() if (req.custom_message and req.custom_message.strip()) else req.category
+    
+    now = time.localtime()
+    date_str = time.strftime("%Y-%m-%d", now)
+    time_str = time.strftime("%H:%M:%S", now)
+    timestamp_str = f"{date_str} {time_str}"
+    
+    incident = {
+        "id": incident_id,
+        "category": req.category,
+        "description": desc,
+        "coords": req.coords,
+        "lat": req.coords[0],
+        "lng": req.coords[1],
+        "date": date_str,
+        "time": time_str,
+        "timestamp": timestamp_str,
+        "photo_filename": req.photo_filename,
+        "status": "Pinpointed on WebGL GIS Map"
+    }
+    field_incidents.append(incident)
+    
+    point_susceptibility = tif_processor.query_susceptibility(lat=req.coords[0], lon=req.coords[1])
+    res_str = resource_allocation_tool(req.coords, 25.0)
+    resources_data = json.loads(res_str)
+    
+    return {
+        "status": "success",
+        "incident": incident,
+        "susceptibility_assessment": point_susceptibility,
+        "emergency_allocation": resources_data,
+        "total_active_incidents": len(field_incidents)
+    }
+
+@app.get("/api/agent/incidents")
+def api_agent_get_incidents():
+    """Returns all pinpointed field incidents for map overlays."""
+    return {"incidents": field_incidents}
+
+# Serve static landing portal, proto2 WebGL MVP, and Chatbot UI directly from FastAPI backend
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
+
+@app.get("/proto2")
+def serve_proto2_redirect():
+    return RedirectResponse(url="/proto2/", status_code=307)
+
+@app.get("/proto2/")
+def serve_proto2():
+    proto2_index = os.path.join(proto2_dir, "index.html")
+    if os.path.exists(proto2_index):
+        return FileResponse(proto2_index)
+    return {"error": "Proto2 index.html not found"}
+
+@app.get("/chatbot")
+def serve_chatbot_redirect():
+    return RedirectResponse(url="/chatbot/", status_code=307)
+
+@app.get("/chatbot/")
+def serve_chatbot():
+    chatbot_index = os.path.join(chatbot_dir, "index.html")
+    if os.path.exists(chatbot_index):
+        return FileResponse(chatbot_index)
+    return {"error": "Chatbot index.html not found"}
 
 if os.path.exists(proto2_dir):
-    app.mount("/proto2", StaticFiles(directory=proto2_dir, html=True), name="proto2")
+    app.mount("/proto2", StaticFiles(directory=proto2_dir, html=True), name="proto2_static")
+
+if os.path.exists(chatbot_dir):
+    app.mount("/chatbot", StaticFiles(directory=chatbot_dir, html=True), name="chatbot_static")
 
 if os.path.exists(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

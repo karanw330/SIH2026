@@ -2,7 +2,7 @@
  * North East India Spatial Map (Proto2) - WebGL & Deck.gl Application Logic
  */
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = (window.location.port === '8000') ? window.location.origin : 'http://localhost:8000';
 
 // Global Application State
 const state = {
@@ -37,23 +37,23 @@ const state = {
   currentStyle: 'dark'
 };
 
-// MapLibre Tile Styles (Uniform High-Performance Raster Styles)
+// MapLibre Tile Styles (100% Free, Zero-API-Key Raster Tile Sources)
 const STYLES = {
   dark: {
     version: 8,
     sources: {
-      'carto-dark': {
+      'esri-dark': {
         type: 'raster',
-        tiles: ['https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png'],
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256,
-        attribution: '&copy; CartoDB &copy; OpenStreetMap'
+        attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
       }
     },
     layers: [
       {
-        id: 'carto-dark-layer',
+        id: 'esri-dark-layer',
         type: 'raster',
-        source: 'carto-dark',
+        source: 'esri-dark',
         minzoom: 0,
         maxzoom: 19
       }
@@ -62,18 +62,18 @@ const STYLES = {
   street: {
     version: 8,
     sources: {
-      'carto-street': {
+      'osm-street': {
         type: 'raster',
-        tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'],
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
         tileSize: 256,
-        attribution: '&copy; CartoDB &copy; OpenStreetMap'
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }
     },
     layers: [
       {
-        id: 'carto-street-layer',
+        id: 'osm-street-layer',
         type: 'raster',
-        source: 'carto-street',
+        source: 'osm-street',
         minzoom: 0,
         maxzoom: 19
       }
@@ -86,7 +86,7 @@ const STYLES = {
         type: 'raster',
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256,
-        attribution: '&copy; Esri'
+        attribution: '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
       }
     },
     layers: [
@@ -106,18 +106,74 @@ document.addEventListener('DOMContentLoaded', () => {
   initMap();
   fetchStatsAndDistricts();
   fetchGeoJSONData();
+  fetchFieldIncidents();
   setupEventListeners();
   setupRoutingEventListeners();
+  setTimeout(checkUrlTargeting, 1000);
 });
+
+// Fetch Field-Reported Pinpointed Incidents
+async function fetchFieldIncidents() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/agent/incidents`);
+    if (!res.ok) return;
+    const data = await res.json();
+    state.fieldIncidents = data.incidents || [];
+    updateDeckLayers();
+  } catch (err) {
+    console.warn('Field incidents fetch note:', err);
+  }
+}
+
+// Check URL Query Parameters for Targeted Incident Pinpointing (e.g. ?lat=28.06&lng=95.32)
+function checkUrlTargeting() {
+  const params = new URLSearchParams(window.location.search);
+  const latParam = params.get('lat');
+  const lngParam = params.get('lng');
+  if (latParam && lngParam && state.map) {
+    const lat = parseFloat(latParam);
+    const lng = parseFloat(lngParam);
+    const category = params.get('category') || 'Field Incident Pinpoint';
+    const desc = params.get('desc') || category;
+    const date = params.get('date') || new Date().toISOString().split('T')[0];
+    const time = params.get('time') || new Date().toTimeString().split(' ')[0];
+
+    state.map.flyTo({ center: [lng, lat], zoom: 12.8, pitch: 25, duration: 2200 });
+
+    // Create pulsing purple HTML beacon marker for maximum visibility
+    const el = document.createElement('div');
+    el.className = 'purple-pulsing-marker';
+    el.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+
+    new maplibregl.Marker({ element: el })
+      .setLngLat([lng, lat])
+      .addTo(state.map);
+
+    new maplibregl.Popup({ closeOnClick: false, offset: [0, -14] })
+      .setLngLat([lng, lat])
+      .setHTML(`
+        <div style="font-family: sans-serif; padding: 6px; color: #081522; min-width: 210px;">
+          <div style="color: #c084fc; font-weight: 800; font-size: 15px; margin-bottom: 4px;"><i class="fa-solid fa-triangle-exclamation"></i> ${category}</div>
+          <div style="color: #0f172a; font-size: 13px; margin-bottom: 6px;"><b>What Happened:</b> ${desc}</div>
+          <div style="font-family: monospace; font-size: 11.5px; color: #0284c7;">📍 Coords: ${lat}, ${lng}</div>
+          <div style="font-family: monospace; font-size: 11.5px; color: #d97706;">🕒 Date & Time: ${date} at ${time}</div>
+        </div>
+      `)
+      .addTo(state.map);
+  }
+}
 
 // Initialize MapLibre GL Map & Deck.gl Overlay
 function initMap() {
-  // Center on North East India
+  // Center on North East India with regional bounds and zoom limits
   state.map = new maplibregl.Map({
     container: 'map',
     style: STYLES.dark,
-    center: [91.8933, 25.5788],
-    zoom: 7.8,
+    center: [92.2, 25.8],
+    zoom: 6.8,
+    minZoom: 5.0,
+    maxZoom: 16.0,
+    maxBounds: [[82.0, 18.0], [102.0, 32.5]],
     pitch: 0,
     bearing: 0
   });
@@ -185,7 +241,9 @@ async function initRasterLayer() {
     state.rasterInfo = info;
     
     if (info.bounds) {
-      addRasterSourceAndLayer(info);
+      const params = new URLSearchParams(window.location.search);
+      const hasUrlTarget = params.get('lat') && params.get('lng');
+      addRasterSourceAndLayer(info, !hasUrlTarget);
     }
   } catch (err) {
     console.warn('GeoTIFF raster overlay initialization note:', err);
@@ -339,6 +397,22 @@ function updateDeckLayers() {
     );
   }
 
+  // 4b. Critical Hazard Route Segments Layer (Score >= 0.75 Highlight)
+  if (state.criticalSegmentsGeoJSON) {
+    layers.push(
+      new deck.GeoJsonLayer({
+        id: 'critical-route-path-layer',
+        data: state.criticalSegmentsGeoJSON,
+        pickable: true,
+        autoHighlight: true,
+        stroked: true,
+        getLineColor: [239, 68, 68, 255], // Glowing Pulsing Red
+        getLineWidth: 10,
+        lineWidthMinPixels: 8
+      })
+    );
+  }
+
   // 5. Origin and Destination Pin Markers
   const pins = [];
   if (state.routeOrigin) {
@@ -372,6 +446,24 @@ function updateDeckLayers() {
     );
   }
 
+  // 6. Field-Reported Pinpointed Incidents Layer
+  if (state.fieldIncidents && state.fieldIncidents.length > 0) {
+    layers.push(
+      new deck.ScatterplotLayer({
+        id: 'field-incidents-layer',
+        data: state.fieldIncidents,
+        pickable: true,
+        autoHighlight: true,
+        radiusMinPixels: 14,
+        radiusMaxPixels: 28,
+        getPosition: d => [d.lng || (d.coords ? d.coords[1] : 0), d.lat || (d.coords ? d.coords[0] : 0)],
+        getFillColor: [217, 70, 239, 245], // Vibrant Purple #d946ef
+        getLineColor: [255, 255, 255, 255],
+        lineWidthMinPixels: 3.0
+      })
+    );
+  }
+
   // Update Deck.gl Overlay
   state.deckOverlay.setProps({ layers });
 }
@@ -379,6 +471,19 @@ function updateDeckLayers() {
 // Hover Tooltip Callback for Deck.gl
 function getDeckTooltip({ object }) {
   if (!object) return null;
+
+  if (object.category || object.status === "Pinpointed on WebGL GIS Map") {
+    return {
+      html: `
+        <div style="font-family: sans-serif; padding: 6px; min-width: 210px;">
+          <div style="color: #ef4444; font-weight: 700; font-size: 14px; margin-bottom: 4px;">🚨 ${object.category || 'Incident Pinpoint'}</div>
+          <div style="color: #fff; font-size: 13px; margin-bottom: 4px;"><b>Report:</b> ${object.description || object.category}</div>
+          <div style="font-family: monospace; font-size: 11.5px; color: #38bdf8;">📍 Coords: ${object.lat || (object.coords ? object.coords[0] : '')}, ${object.lng || (object.coords ? object.coords[1] : '')}</div>
+          <div style="font-family: monospace; font-size: 11.5px; color: #f59e0b;">🕒 Date & Time: ${object.date || ''} ${object.time || ''}</div>
+        </div>
+      `
+    };
+  }
 
   const props = object.properties || {};
 
@@ -408,7 +513,7 @@ function handleFeatureClick(info) {
 }
 
 // Fetch Regional Statistics & Districts
-async function fetchStatsAndDistricts() {
+async function fetchStatsAndDistricts(retries = 4) {
   try {
     const res = await fetch(`${API_BASE_URL}/api/stats`);
     if (!res.ok) throw new Error('Failed to fetch stats');
@@ -442,7 +547,9 @@ async function fetchStatsAndDistricts() {
 
     updateKPICards();
   } catch (err) {
-    console.error('Error fetching stats:', err);
+    if (retries > 0) {
+      setTimeout(() => fetchStatsAndDistricts(retries - 1), 2500);
+    }
   }
 }
 
@@ -512,7 +619,7 @@ function populateYearControls() {
 }
 
 // Fetch GeoJSON FeatureCollection for OSM Features
-async function fetchGeoJSONData() {
+async function fetchGeoJSONData(retries = 4) {
   try {
     let url = `${API_BASE_URL}/api/geojson/northeast?`;
     const stateSelect = document.getElementById('state-select');
@@ -530,7 +637,9 @@ async function fetchGeoJSONData() {
     updateDeckLayers();
     updateKPICards();
   } catch (err) {
-    console.error('Error fetching GeoJSON:', err);
+    if (retries > 0) {
+      setTimeout(() => fetchGeoJSONData(retries - 1), 2500);
+    }
   }
 }
 
@@ -975,6 +1084,7 @@ function clearRoute() {
   state.routeDest = null;
   state.pickMode = null;
   state.routeGeoJSON = null;
+  state.criticalSegmentsGeoJSON = null;
   state.routeMetadata = {};
   updateDeckLayers();
 
@@ -998,7 +1108,7 @@ async function fetchShortestPathRoute() {
     return;
   }
 
-  setRouteStatus('<i class="fa-solid fa-spinner fa-spin"></i> Calculating shortest path road route...');
+  setRouteStatus('<i class="fa-solid fa-spinner fa-spin"></i> Calculating route & analyzing GeoTIFF hazard susceptibility...');
 
   try {
     const url = `${API_BASE_URL}/api/route?lat1=${state.routeOrigin.lat}&lon1=${state.routeOrigin.lng}&lat2=${state.routeDest.lat}&lon2=${state.routeDest.lng}`;
@@ -1011,29 +1121,23 @@ async function fetchShortestPathRoute() {
     }
 
     state.routeGeoJSON = data.geojson;
+    state.criticalSegmentsGeoJSON = data.critical_segments_geojson || null;
     state.routeMetadata = data;
     updateDeckLayers();
 
     const distText = data.distance_km ? ` | <b>${data.distance_km} km</b>` : '';
     const durText = data.duration_min ? ` (~${data.duration_min} mins)` : '';
 
-    // Check landslide susceptibility raster score at origin and destination
-    let hazardWarning = '';
-    try {
-      const q1 = await fetch(`${API_BASE_URL}/api/raster/susceptibility/query?lat=${state.routeOrigin.lat}&lon=${state.routeOrigin.lng}`);
-      const q2 = await fetch(`${API_BASE_URL}/api/raster/susceptibility/query?lat=${state.routeDest.lat}&lon=${state.routeDest.lng}`);
-      const d1 = await q1.json();
-      const d2 = await q2.json();
-      
-      const s1 = d1.probability_score || 0;
-      const s2 = d2.probability_score || 0;
+    let hazardAlert = '';
+    if (data.has_critical_hazards) {
+      hazardAlert = `<div style="margin-top: 6px; padding: 8px 10px; background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 6px; color: #f87171; font-weight: 700; font-size: 0.75rem;">` +
+        `<i class="fa-solid fa-triangle-exclamation"></i> CRITICAL ROUTE HAZARD: Passes through <b>${data.critical_sectors_count}</b> Critical Sector(s) (Peak Susceptibility: <span style="color:#fff; background:#dc2626; padding:1px 5px; border-radius:3px;">${data.max_susceptibility}</span> ≥ 0.75)! Highlighted in Red on WebGL map.` +
+        `</div>`;
+    } else {
+      hazardAlert = `<div style="margin-top: 4px; color: #10b981; font-size: 0.72rem;"><i class="fa-solid fa-shield-halved"></i> Safe Corridor: Peak susceptibility along route is ${data.max_susceptibility || '0.00'} (< 0.75).</div>`;
+    }
 
-      if (s1 >= 0.75 || s2 >= 0.75) {
-        hazardWarning = `<div style="margin-top:4px; color:#d7191c; font-weight:700;"><i class="fa-solid fa-triangle-exclamation"></i> CRITICAL ROUTE HAZARD: Passes Severe Corridor (Score >= 0.75)!</div>`;
-      }
-    } catch (e) {}
-
-    setRouteStatus(`<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Route calculated!${distText}${durText}${hazardWarning}`);
+    setRouteStatus(`<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Route calculated!${distText}${durText}${hazardAlert}`);
   } catch (err) {
     console.error('Error fetching route:', err);
     setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Request failed to connect backend.', true);

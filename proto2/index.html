@@ -18,7 +18,8 @@
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="/proto2/css/style.css" />
 </head>
 <body class="dark-theme">
   <div id="app">
@@ -41,8 +42,14 @@
         <button id="clear-search-btn" class="icon-btn hidden" title="Clear Search"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
-      <!-- Action Buttons -->
+      <!-- Action Buttons & Cross-Module Navigation -->
       <div class="header-actions">
+        <a href="/" class="btn btn-secondary" title="Return to Main Sentinel Portal" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-arrow-left"></i> Sentinel Portal
+        </a>
+        <a href="/chatbot" target="_blank" class="btn btn-secondary" title="Launch AI Chatbot" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: rgba(232, 162, 58, 0.2); border-color: rgba(232, 162, 58, 0.5); color: #f2c069;">
+          <i class="fa-solid fa-robot"></i> Report Hazard (Chatbot)
+        </a>
         <button id="reset-bounds-btn" class="btn btn-secondary" title="Reset View Bounds">
           <i class="fa-solid fa-crosshairs"></i> Reset View
         </button>
@@ -57,70 +64,7 @@
       <!-- Floating Sidebar Controls -->
       <aside class="control-panel glass-card" id="sidebar-controls">
         <div class="panel-header">
-          <h2><i class="fa-solid fa-sliders"></i> GPU Filter Controls</h2>
-          <button id="reset-filters-btn" class="text-btn">Reset All</button>
-        </div>
-
-        <div class="filter-group">
-          <label for="state-select"><i class="fa-solid fa-landmark"></i> State</label>
-          <select id="state-select" class="custom-select">
-            <option value="">All North East States (8)</option>
-            <option value="Arunachal Pradesh">Arunachal Pradesh</option>
-            <option value="Assam">Assam</option>
-            <option value="Manipur">Manipur</option>
-            <option value="Meghalaya">Meghalaya</option>
-            <option value="Mizoram">Mizoram</option>
-            <option value="Nagaland">Nagaland</option>
-            <option value="Sikkim">Sikkim</option>
-            <option value="Tripura">Tripura</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
-          <label for="district-select"><i class="fa-solid fa-location-dot"></i> District</label>
-          <select id="district-select" class="custom-select">
-            <option value="">All Districts</option>
-          </select>
-        </div>
-
-        <!-- Layer Toggle -->
-        <div class="filter-group">
-          <label><i class="fa-solid fa-microchip"></i> WebGL GPU Layer Controls</label>
-          <div class="toggle-list">
-            <label class="checkbox-label" style="background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <span><i class="fa-solid fa-layer-group" style="color: #a855f7;"></i> Landslide Susceptibility (.tif)</span>
-                <input type="checkbox" id="toggle-tif-raster" checked />
-              </div>
-              <div style="margin-top: 6px; font-size: 0.72rem; color: var(--text-muted);">
-                Raster Overlay Opacity: <span id="tif-opacity-val">80%</span>
-              </div>
-              <input type="range" id="tif-opacity-slider" min="0" max="100" value="80" style="width: 100%; accent-color: #a855f7; cursor: pointer; margin-top: 4px;" />
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="toggle-stations" checked />
-              <span><i class="fa-solid fa-circle" style="color: #0ea5e9;"></i> OSM Vector Features (Deck.gl Scatterplot)</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- KPI Metrics Grid -->
-        <div class="kpi-section">
-          <h3><i class="fa-solid fa-chart-pie"></i> GPU Data Metrics</h3>
-          <div class="kpi-grid">
-            <div class="kpi-card accent-primary full-width">
-              <span class="kpi-value" id="kpi-total">--</span>
-              <span class="kpi-label">Total Spatial OSM Features</span>
-            </div>
-            <div class="kpi-card accent-cyan">
-              <span class="kpi-value" id="kpi-states">8</span>
-              <span class="kpi-label">NE States</span>
-            </div>
-            <div class="kpi-card accent-emerald">
-              <span class="kpi-value" id="kpi-districts">--</span>
-              <span class="kpi-label">Districts</span>
-            </div>
-          </div>
+          <h2><i class="fa-solid fa-sliders"></i> Map Controls</h2>
         </div>
 
         <!-- Map Base Style Switcher -->
@@ -136,7 +80,7 @@
         <!-- Road Routing Section -->
         <div class="filter-group routing-section" style="margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
           <label style="color: var(--accent-cyan); font-weight: 700;">
-            <i class="fa-solid fa-route"></i> Road Routing & Shortest Path (GPU Line)
+            <i class="fa-solid fa-route"></i> Road Routing & Shortest Path
           </label>
           
           <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">
@@ -255,6 +199,6 @@
   <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
 
   <!-- Application JS -->
-  <script src="js/app.js"></script>
+  <script src="/proto2/js/app.js"></script>
 </body>
 </html>
