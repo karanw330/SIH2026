@@ -297,47 +297,76 @@ function addRasterSourceAndLayer(info, shouldFitBounds = true) {
   }
 }
 
-// Query continuous probability score at lat/lon click point
+// In-Memory Point Query Cache for GeoTIFF Raster Queries
+const rasterPointCache = new Map();
+
+// Query continuous probability score at lat/lon click point with LRU caching
 async function inspectRasterPoint(lat, lng) {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/raster/susceptibility/query?lat=${lat}&lon=${lng}`);
-    if (!res.ok) return;
-    const data = await res.json();
+  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  let data;
 
-    const score = data.probability_score !== undefined ? data.probability_score : 0.0;
-    const pct = data.percentage || `${(score * 100).toFixed(1)}%`;
-    const cat = data.risk_category || 'Susceptibility Score';
-    const color = data.color || '#a855f7';
+  if (rasterPointCache.has(cacheKey)) {
+    data = rasterPointCache.get(cacheKey);
+  } else {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/raster/susceptibility/query?lat=${lat}&lon=${lng}`);
+      if (!res.ok) return;
+      data = await res.json();
+      if (rasterPointCache.size > 200) {
+        const firstKey = rasterPointCache.keys().next().value;
+        rasterPointCache.delete(firstKey);
+      }
+      rasterPointCache.set(cacheKey, data);
+    } catch (err) {
+      console.warn('Raster query failed:', err);
+      return;
+    }
+  }
 
-    new maplibregl.Popup({ closeButton: true, className: 'custom-raster-popup' })
-      .setLngLat([lng, lat])
-      .setHTML(`
-        <div style="font-family: var(--font-main); padding: 4px;">
-          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-            <i class="fa-solid fa-layer-group" style="color: ${color}; font-size: 1.1rem;"></i>
-            <h4 style="margin: 0; font-size: 0.95rem; color: #fff;">Landslide Susceptibility Score</h4>
+  const score = data.probability_score !== undefined ? data.probability_score : 0.0;
+  const pct = data.percentage || `${(score * 100).toFixed(1)}%`;
+  const cat = data.risk_category || 'Susceptibility Score';
+  const color = data.color || '#a855f7';
+
+  new maplibregl.Popup({ closeButton: true, className: 'custom-raster-popup' })
+    .setLngLat([lng, lat])
+    .setHTML(`
+      <div style="font-family: var(--font-main); padding: 4px;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+          <i class="fa-solid fa-layer-group" style="color: ${color}; font-size: 1.1rem;"></i>
+          <h4 style="margin: 0; font-size: 0.95rem; color: #fff;">Landslide Susceptibility Score</h4>
+        </div>
+        <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; border-left: 4px solid ${color};">
+          <div style="font-size: 1.25rem; font-weight: 700; color: ${color}; font-family: var(--font-heading);">
+            ${score} <span style="font-size: 0.85rem; color: #cbd5e1;">(${pct} probability)</span>
           </div>
-          <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; border-left: 4px solid ${color};">
-            <div style="font-size: 1.25rem; font-weight: 700; color: ${color}; font-family: var(--font-heading);">
-              ${score} <span style="font-size: 0.85rem; color: #cbd5e1;">(${pct} probability)</span>
-            </div>
-            <div style="font-size: 0.8rem; font-weight: 600; color: #f8fafc; margin-top: 2px;">
-              Risk Assessment: <span style="color: ${color};">${cat}</span>
-            </div>
-            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 4px;">
-              📍 Coordinates: ${lat}, ${lng}
-            </div>
+          <div style="font-size: 0.8rem; font-weight: 600; color: #f8fafc; margin-top: 2px;">
+            Risk Assessment: <span style="color: ${color};">${cat}</span>
+          </div>
+          <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 4px;">
+            📍 Coordinates: ${lat}, ${lng}
           </div>
         </div>
-      `)
-      .addTo(state.map);
-  } catch (err) {
-    console.warn('Raster query failed:', err);
-  }
+      </div>
+    `)
+    .addTo(state.map);
 }
 
-// Generate Deck.gl WebGL Layers and attach to MapLibre Overlay
+let isDeckUpdatePending = false;
+
+// Throttled Deck.gl Layer Batching via requestAnimationFrame
 function updateDeckLayers() {
+  if (!state.deckOverlay) return;
+  if (isDeckUpdatePending) return;
+
+  isDeckUpdatePending = true;
+  requestAnimationFrame(() => {
+    isDeckUpdatePending = false;
+    performDeckUpdate();
+  });
+}
+
+function performDeckUpdate() {
   if (!state.deckOverlay) return;
 
   const layers = [];
@@ -375,7 +404,7 @@ function updateDeckLayers() {
           }
           return [props.long || 0, props.lat || 0];
         },
-        getFillColor: [14, 165, 233, 220], // Cyan
+        getFillColor: [14, 165, 233, 220],
         getLineColor: [2, 132, 199, 255],
         onClick: info => handleFeatureClick(info)
       })
@@ -390,7 +419,7 @@ function updateDeckLayers() {
         data: state.routeGeoJSON,
         pickable: false,
         stroked: true,
-        getLineColor: [6, 182, 212, 255], // Cyan
+        getLineColor: [6, 182, 212, 255],
         getLineWidth: 6,
         lineWidthMinPixels: 5
       })
@@ -406,7 +435,7 @@ function updateDeckLayers() {
         pickable: true,
         autoHighlight: true,
         stroked: true,
-        getLineColor: [239, 68, 68, 255], // Glowing Pulsing Red
+        getLineColor: [239, 68, 68, 255],
         getLineWidth: 10,
         lineWidthMinPixels: 8
       })
@@ -418,14 +447,14 @@ function updateDeckLayers() {
   if (state.routeOrigin) {
     pins.push({
       position: [state.routeOrigin.lng, state.routeOrigin.lat],
-      color: [16, 185, 129, 255], // Green
+      color: [16, 185, 129, 255],
       label: 'Origin'
     });
   }
   if (state.routeDest) {
     pins.push({
       position: [state.routeDest.lng, state.routeDest.lat],
-      color: [239, 68, 68, 255], // Red
+      color: [239, 68, 68, 255],
       label: 'Destination'
     });
   }
@@ -457,16 +486,16 @@ function updateDeckLayers() {
         radiusMinPixels: 14,
         radiusMaxPixels: 28,
         getPosition: d => [d.lng || (d.coords ? d.coords[1] : 0), d.lat || (d.coords ? d.coords[0] : 0)],
-        getFillColor: [217, 70, 239, 245], // Vibrant Purple #d946ef
+        getFillColor: [217, 70, 239, 245],
         getLineColor: [255, 255, 255, 255],
         lineWidthMinPixels: 3.0
       })
     );
   }
 
-  // Update Deck.gl Overlay
   state.deckOverlay.setProps({ layers });
 }
+
 
 // Hover Tooltip Callback for Deck.gl
 function getDeckTooltip({ object }) {
@@ -735,6 +764,7 @@ function updateDistrictDropdown() {
 
   const districts = state.allDistrictsByState[selectedState] || [];
   districts.forEach(dist => {
+
     const opt = document.createElement('option');
     opt.value = dist;
     opt.textContent = dist;
@@ -744,6 +774,15 @@ function updateDistrictDropdown() {
 
 // Setup Main UI Event Listeners
 function setupEventListeners() {
+  const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+  if (toggleSidebarBtn) {
+    toggleSidebarBtn.addEventListener('click', () => {
+      const sidebar = document.getElementById('sidebar-controls');
+      if (sidebar) sidebar.classList.toggle('mobile-open');
+    });
+  }
+
+
   const stateSelect = document.getElementById('state-select');
   const districtSelect = document.getElementById('district-select');
   const searchInput = document.getElementById('search-input');

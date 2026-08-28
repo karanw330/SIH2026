@@ -552,6 +552,13 @@ def serve_chatbot():
         return FileResponse(chatbot_index)
     return {"error": "Chatbot index.html not found"}
 
+@app.get("/")
+def serve_frontend_root():
+    frontend_index = os.path.join(frontend_dir, "index.html")
+    if os.path.exists(frontend_index):
+        return FileResponse(frontend_index)
+    return {"error": "Frontend index.html not found"}
+
 if os.path.exists(proto2_dir):
     app.mount("/proto2", StaticFiles(directory=proto2_dir, html=True), name="proto2_static")
 
@@ -560,6 +567,7 @@ if os.path.exists(chatbot_dir):
 
 if os.path.exists(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+
 
 if __name__ == "__main__":
     import uvicorn
