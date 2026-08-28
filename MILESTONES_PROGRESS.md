@@ -29,7 +29,7 @@
 - [x] Crop and optimize 100m IIT Delhi ILSM raster for North East region (`ner_ilsm_cropped.tif` - 590.5 MB).
 - [x] Set up FastAPI service keeping GeoTIFF in memory for sub-millisecond coordinate queries (`tif_processor.py`).
 - [x] Write line-sampling logic to take route coordinate arrays, extract pixel probabilities ($0.0 - 1.0$), and isolate critical segments ($\ge 0.75$).
-- [ ] **REMAINING**: Integrate **India Meteorological Department (IMD) / MOSDAC Weather APIs** to automatically fetch real-time precipitation (`precipitation_mm_hr`) for route coordinates and compute dynamic risk:  
+- [x] **REMAINING**: Integrate **India Meteorological Department (IMD) / MOSDAC Weather APIs** to automatically fetch real-time precipitation (`precipitation_mm_hr`) for route coordinates and compute dynamic risk:  
   $$\text{Dynamic Risk} = \text{Base GeoTIFF Score} \times \left[1 + \frac{\text{Live Rain (mm/hr)}}{50}\right]$$
 
 ---
@@ -49,7 +49,7 @@
 
 - [x] Highlight critical route segments breaching $0.75$ in glowing red with white borders on Deck.gl.
 - [x] Remove obsolete manual slider simulation (replaced with automated Live Weather API query).
-- [ ] **REMAINING**: Automatically fetch live weather data for origin/destination/waypoints using India Meteorological Department (IMD) Weather APIs.
+- [x] **REMAINING**: Automatically fetch live weather data for origin/destination/waypoints using India Meteorological Department (IMD) Weather APIs.
 - [ ] **REMAINING**: Implement **Automatic Alternate Green Safe Route**: When risk breaches $0.75$, generate and render an alternate safe bypass route on Deck.gl in **Green Line (`#10b981`)**.
 
 ---
