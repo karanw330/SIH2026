@@ -1,4 +1,4 @@
-# 📊 Landslide Sentinel AI — Milestones & Implementation Progress Report
+# 📊 Nisarg AI — Milestones & Implementation Progress Report
 
 > **Project Target**: Smart India Hackathon 2026 (SIH2026)  
 > **Current Overall Progress**: **70% Completed** (Refined with Live API Requirements)

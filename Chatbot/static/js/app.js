@@ -1,5 +1,5 @@
 /**
- * AI Sentinel Chatbot Application Logic — Pinpointed Incident Response Engine
+ * Nisarg AI Chatbot Application Logic — Pinpointed Incident Response Engine
  * Aligned with DESIGN.md ("The Alpine Guardian" & "Command-Center Precision")
  * Authoritative Motion & Animation Suite
  */
@@ -56,17 +56,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pulsing Purple Beacon Leaflet Icon aligned with DESIGN.md (#D946EF)
     const customIcon = L.divIcon({
       className: 'custom-beacon-pin',
-      html: `<span>${iconSymbol}</span>`,
-      iconSize: [26, 26],
-      iconAnchor: [13, 13]
+      html: `<div class="geotag-beacon-core" style="width: 28px; height: 28px; font-size: 13px;">${iconSymbol}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
     });
 
     const marker = L.marker(coords, { icon: customIcon }).addTo(map);
     marker.bindPopup(`
-      <div style="font-family: var(--font-body, sans-serif); padding: 4px;">
-        <b style="color: #D4B85C; font-size: 13px;">${category}</b><br />
-        <span style="font-size: 12px; color: #F1F2EE;">${title}</span><br />
-        <code style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8FE3D3; margin-top: 4px; display: inline-block;">📍 ${coords[0]}, ${coords[1]}</code>
+      <div style="font-family: var(--font-body, sans-serif); padding: 4px; min-width: 190px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 700; color: #f472b6; margin-bottom: 2px;">📷 EXIF GEOTAG VERIFIED</div>
+        <b style="color: #D4B85C; font-size: 13.5px; font-family: var(--font-display, sans-serif);">${category}</b><br />
+        <span style="font-size: 12px; color: #F1F2EE; display: block; margin: 2px 0 4px 0;">${title}</span>
+        <code style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #8FE3D3; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; display: inline-block;">📍 ${coords[0]}, ${coords[1]}</code>
       </div>
     `).openPopup();
 
@@ -289,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="msg bot">
           <div class="avatar"><i class="fa-solid fa-robot"></i></div>
           <div class="msg-bubble">
-            <div class="msg-author">AI Sentinel Agent</div>
+            <div class="msg-author">Nisarg AI Agent</div>
             Feed cleared. Ready for field photo EXIF uploads or incident reports.
           </div>
         </div>
@@ -321,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    appendReasoningIndicator('AI Sentinel Engine', 'Evaluating query against North East spatial database...');
+    appendReasoningIndicator('Nisarg AI Engine', 'Evaluating query against North East spatial database...');
 
     if (lower.includes('reroute') || lower.includes('route') || lower.includes('path')) {
       try {
@@ -415,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     msg.innerHTML = `
       <div class="avatar"><i class="fa-solid fa-robot"></i></div>
       <div class="msg-bubble">
-        <div class="msg-author">AI Sentinel Agent</div>
+        <div class="msg-author">Nisarg AI Agent</div>
         ${htmlContent}
       </div>
     `;
@@ -431,7 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
     msg.innerHTML = `
       <div class="avatar"><i class="fa-solid fa-robot"></i></div>
       <div class="msg-bubble" style="width: 100%;">
-        <div class="msg-author">AI Sentinel Agent · <span style="color: var(--accent-gold-light);">${toolName}</span></div>
+        <div class="msg-author">Nisarg AI Agent · <span style="color: var(--accent-gold-light);">${toolName}</span></div>
         <div class="tool-reasoning-card">
           <div class="tool-step active"><i class="fa-solid fa-gear fa-spin"></i> <span>${actionDetail}</span></div>
           <div class="tool-progress-bar"><div class="tool-progress-fill"></div></div>

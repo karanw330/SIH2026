@@ -1,5 +1,5 @@
 ---
-name: Landslide Sentinel AI Design System
+name: Nisarg AI Design System
 description: Multi-portal GIS analytics, 3D WebGL GPU maps, and AI emergency incident response system for North East India.
 colors:
   bg-deep: "#06111C"
@@ -72,13 +72,13 @@ components:
     padding: "24px"
 ---
 
-# Design System: Landslide Sentinel AI
+# Design System: Nisarg AI
 
 ## Overview
 
 **Creative North Star: "The Alpine Guardian"**
 
-Landslide Sentinel AI fuses atmospheric mountain glass aesthetics with high-contrast emergency command-center telemetry. Built for North East India’s rugged terrain, the interface projects authoritative disaster monitoring, real-time WebGL risk scoring, and field-response capabilities across 3 unified web portals (`/`, `/proto2`, `/chatbot`).
+Nisarg AI fuses atmospheric mountain glass aesthetics with high-contrast emergency command-center telemetry. Built for North East India’s rugged terrain, the interface projects authoritative disaster monitoring, real-time WebGL risk scoring, and field-response capabilities across 3 unified web portals (`/`, `/proto2`, `/chatbot`).
 
 The design language pairs deep midnight navy (`#06111C`) and alpine forest greens (`#0B3D2E`) with luminous safety accents: gold CTA highlights (`#D4B85C`), emergency hazard reds (`#E14D3C`), and pulsing purple beacons (`#D946EF`). Blur-heavy glassmorphism panels create spatial hierarchy over live map canvases without compromising operational readability.
 
@@ -95,7 +95,7 @@ The color system relies on dark, atmospheric base tones punctuated by luminous e
 
 ### Primary
 - **Alpine Forest** (`#0B3D2E` / `rgb(11, 61, 46)`): Core branding accent, primary buttons, and hero card structure.
-- **Sentinel Gold** (`#D4B85C` / `rgb(212, 184, 92)`): High-priority action buttons, key metrics, and gold dot accents.
+- **Nisarg Gold** (`#D4B85C` / `rgb(212, 184, 92)`): High-priority action buttons, key metrics, and gold dot accents.
 
 ### Secondary
 - **Teal Horizon** (`#1B8377` / `#3FB6A6`): Navigation highlights, active status badges, and interactive sliders.
@@ -144,7 +144,7 @@ The spatial model uses responsive grid layouts and floating glass panels overlai
 
 ## Elevation & Depth
 
-Landslide Sentinel AI avoids standard solid drop-shadows, using multi-layer glassmorphism, glowing borders, and backdrop blurs to establish spatial depth.
+Nisarg AI avoids standard solid drop-shadows, using multi-layer glassmorphism, glowing borders, and backdrop blurs to establish spatial depth.
 
 ### Shadow & Glow Vocabulary
 - **Glass Layer**: `backdrop-filter: blur(16px)`, `background: rgba(15, 32, 27, 0.72)`, `border: 1px solid rgba(255, 255, 255, 0.12)`.

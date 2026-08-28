@@ -24,7 +24,7 @@ Combines continuous $0.00-1.00$ landslide susceptibility score querying against 
 - Travelers and logistics operators searching for safe mountain corridor routing.
 
 ## Capabilities and Constraints
-- **Multi-Portal Gateway**: Single FastAPI server powering Landing Portal (`/`), Proto2 WebGL Map (`/proto2`), and AI Sentinel Chatbot (`/chatbot`).
+- **Multi-Portal Gateway**: Single FastAPI server powering Landing Portal (`/`), Proto2 WebGL Map (`/proto2`), and Nisarg AI Chatbot (`/chatbot`).
 - **GeoTIFF Raster Engine**: Reads `ner_ilsm_cropped.tif` (590.5 MB) via rasterio/Pillow for precise lat/lon risk score calculation and PNG overlay generation.
 - **Vector Spatial Engine**: Reads `northeast_osm.geojson` (46.6 MB) with 333k spatial features.
 - **WebGL GPU Map**: MapLibre GL + Deck.gl rendering with Esri Dark Gray / OSM basemaps.
@@ -33,7 +33,7 @@ Combines continuous $0.00-1.00$ landslide susceptibility score querying against 
 - **Multilingual Dispatch Tool**: Produces emergency warning SMS cards in English, Assamese, Khasi, and Hindi.
 
 ## Brand Commitments
-- **Name**: Landslide Sentinel AI — North East India GIS & Emergency Response Engine
+- **Name**: Nisarg AI — North East India GIS & Emergency Response Engine
 - **Visual Identity**: Dark mode, vibrant high-contrast accents, glowing hazard overlays (`#ef4444`), glassmorphism UI, pulsing purple incident beacons (`#d946ef`).
 - **Basemaps**: 100% free, zero-API-key Esri & OpenStreetMap basemaps with zero watermarks.
 

@@ -34,7 +34,9 @@ const state = {
   availableYears: [],
   yearsCount: {},
   boundsNE: null,
-  currentStyle: 'dark'
+  currentStyle: 'dark',
+  fieldIncidents: [],
+  htmlIncidentMarkers: []
 };
 
 // MapLibre Tile Styles (100% Free, Zero-API-Key Raster Tile Sources)
@@ -120,9 +122,78 @@ async function fetchFieldIncidents() {
     const data = await res.json();
     state.fieldIncidents = data.incidents || [];
     updateDeckLayers();
+    renderFieldIncidentHtmlMarkers();
   } catch (err) {
     console.warn('Field incidents fetch note:', err);
   }
+}
+
+function renderFieldIncidentHtmlMarkers() {
+  if (!state.map) return;
+  if (state.htmlIncidentMarkers) {
+    state.htmlIncidentMarkers.forEach(m => m.remove());
+  }
+  state.htmlIncidentMarkers = [];
+
+  if (!state.fieldIncidents || state.fieldIncidents.length === 0) return;
+
+  state.fieldIncidents.forEach((inc, idx) => {
+    const lat = inc.lat || (inc.coords ? inc.coords[0] : null);
+    const lng = inc.lng || (inc.coords ? inc.coords[1] : null);
+    if (!lat || !lng) return;
+
+    const category = inc.category || 'Field Incident Pinpoint';
+    const desc = inc.description || category;
+    const date = inc.date || '';
+    const time = inc.time || '';
+    const incId = inc.id || `INC-${101 + idx}`;
+
+    let iconClass = 'fa-camera';
+    if (category.includes('Road') || category.includes('Blockage')) iconClass = 'fa-road-barrier';
+    else if (category.includes('Landslide')) iconClass = 'fa-hill-rockslide';
+    else if (category.includes('Flood')) iconClass = 'fa-house-tsunami';
+    else if (category.includes('Rockfall')) iconClass = 'fa-volcano';
+
+    const el = document.createElement('div');
+    el.className = 'geotag-beacon-container';
+    el.innerHTML = `
+      <div class="geotag-beacon-ring"></div>
+      <div class="geotag-beacon-core" title="${category}">
+        <i class="fa-solid ${iconClass}"></i>
+      </div>
+      <div class="geotag-beacon-badge">${incId}</div>
+    `;
+
+    const marker = new maplibregl.Marker({ element: el })
+      .setLngLat([lng, lat])
+      .addTo(state.map);
+
+    const popup = new maplibregl.Popup({ closeOnClick: true, offset: [0, -18], className: 'custom-incident-popup' })
+      .setLngLat([lng, lat])
+      .setHTML(`
+        <div style="font-family: var(--font-main, sans-serif); min-width: 230px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+            <span style="font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 700; background: rgba(217, 70, 239, 0.2); color: #f472b6; border: 1px solid rgba(217, 70, 239, 0.4); padding: 2px 8px; border-radius: 100px; text-transform: uppercase;">
+              🚨 ${incId}
+            </span>
+            <span style="font-family: var(--font-mono, monospace); font-size: 10px; color: #10b981; font-weight: 600;">ACTIVE INCIDENT</span>
+          </div>
+          <h3 style="font-family: var(--font-display, sans-serif); color: #f59e0b; font-size: 15px; font-weight: 700; margin: 0 0 6px 0; display: flex; align-items: center; gap: 6px;">
+            <i class="fa-solid ${iconClass}" style="color: #d946ef;"></i> ${category}
+          </h3>
+          <div style="color: #f1f5f9; font-size: 13px; margin-bottom: 10px; line-height: 1.4;">
+            <b>Field Report:</b> ${desc}
+          </div>
+          <div style="background: rgba(6, 16, 26, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px; font-family: var(--font-mono, monospace); font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="color: #38bdf8;">📍 Coords: ${lat}, ${lng}</div>
+            ${date ? `<div style="color: #f59e0b;">🕒 Time: ${date} ${time}</div>` : ''}
+          </div>
+        </div>
+      `);
+
+    marker.setPopup(popup);
+    state.htmlIncidentMarkers.push(marker);
+  });
 }
 
 // Check URL Query Parameters for Targeted Incident Pinpointing (e.g. ?lat=28.06&lng=95.32)
@@ -138,25 +209,49 @@ function checkUrlTargeting() {
     const date = params.get('date') || new Date().toISOString().split('T')[0];
     const time = params.get('time') || new Date().toTimeString().split(' ')[0];
 
-    state.map.flyTo({ center: [lng, lat], zoom: 12.8, pitch: 25, duration: 2200 });
+    state.map.flyTo({ center: [lng, lat], zoom: 13.2, pitch: 35, duration: 2400 });
 
-    // Create pulsing purple HTML beacon marker for maximum visibility
+    let iconClass = 'fa-camera';
+    if (category.includes('Road') || category.includes('Blockage')) iconClass = 'fa-road-barrier';
+    else if (category.includes('Landslide')) iconClass = 'fa-hill-rockslide';
+    else if (category.includes('Flood')) iconClass = 'fa-house-tsunami';
+    else if (category.includes('Rockfall')) iconClass = 'fa-volcano';
+
+    // Create multi-ring glowing purple beacon marker for geotagged photo incident
     const el = document.createElement('div');
-    el.className = 'purple-pulsing-marker';
-    el.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+    el.className = 'geotag-beacon-container';
+    el.innerHTML = `
+      <div class="geotag-beacon-ring"></div>
+      <div class="geotag-beacon-core" title="${category}">
+        <i class="fa-solid ${iconClass}"></i>
+      </div>
+      <div class="geotag-beacon-badge">EXIF VERIFIED</div>
+    `;
 
     new maplibregl.Marker({ element: el })
       .setLngLat([lng, lat])
       .addTo(state.map);
 
-    new maplibregl.Popup({ closeOnClick: false, offset: [0, -14] })
+    new maplibregl.Popup({ closeOnClick: false, offset: [0, -18], className: 'custom-incident-popup' })
       .setLngLat([lng, lat])
       .setHTML(`
-        <div style="font-family: sans-serif; padding: 6px; color: #081522; min-width: 210px;">
-          <div style="color: #c084fc; font-weight: 800; font-size: 15px; margin-bottom: 4px;"><i class="fa-solid fa-triangle-exclamation"></i> ${category}</div>
-          <div style="color: #0f172a; font-size: 13px; margin-bottom: 6px;"><b>What Happened:</b> ${desc}</div>
-          <div style="font-family: monospace; font-size: 11.5px; color: #0284c7;">📍 Coords: ${lat}, ${lng}</div>
-          <div style="font-family: monospace; font-size: 11.5px; color: #d97706;">🕒 Date & Time: ${date} at ${time}</div>
+        <div style="font-family: var(--font-main, sans-serif); min-width: 230px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+            <span style="font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 700; background: rgba(217, 70, 239, 0.2); color: #f472b6; border: 1px solid rgba(217, 70, 239, 0.4); padding: 2px 8px; border-radius: 100px; text-transform: uppercase;">
+              📷 EXIF Geotagged Photo
+            </span>
+            <span style="font-family: var(--font-mono, monospace); font-size: 10px; color: #10b981; font-weight: 600;">VERIFIED</span>
+          </div>
+          <h3 style="font-family: var(--font-display, sans-serif); color: #f59e0b; font-size: 15px; font-weight: 700; margin: 0 0 6px 0; display: flex; align-items: center; gap: 6px;">
+            <i class="fa-solid ${iconClass}" style="color: #d946ef;"></i> ${category}
+          </h3>
+          <div style="color: #f1f5f9; font-size: 13px; margin-bottom: 10px; line-height: 1.4;">
+            <b>Field Report:</b> ${desc}
+          </div>
+          <div style="background: rgba(6, 16, 26, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px; font-family: var(--font-mono, monospace); font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="color: #38bdf8;">📍 Coords: ${lat}, ${lng}</div>
+            <div style="color: #f59e0b;">🕒 Time: ${date} at ${time}</div>
+          </div>
         </div>
       `)
       .addTo(state.map);
@@ -475,20 +570,37 @@ function performDeckUpdate() {
     );
   }
 
-  // 6. Field-Reported Pinpointed Incidents Layer
+  // 6. Field-Reported Pinpointed Incidents Dual GPU Layer
   if (state.fieldIncidents && state.fieldIncidents.length > 0) {
+    // Outer Glowing Pulsing Halo
+    layers.push(
+      new deck.ScatterplotLayer({
+        id: 'field-incidents-halo-layer',
+        data: state.fieldIncidents,
+        pickable: false,
+        radiusMinPixels: 20,
+        radiusMaxPixels: 36,
+        getPosition: d => [d.lng || (d.coords ? d.coords[1] : 0), d.lat || (d.coords ? d.coords[0] : 0)],
+        getFillColor: [217, 70, 239, 75],
+        getLineColor: [244, 114, 182, 140],
+        lineWidthMinPixels: 1.5
+      })
+    );
+
+    // Core Beacon Symbol Layer
     layers.push(
       new deck.ScatterplotLayer({
         id: 'field-incidents-layer',
         data: state.fieldIncidents,
         pickable: true,
         autoHighlight: true,
-        radiusMinPixels: 14,
-        radiusMaxPixels: 28,
+        highlightColor: [254, 240, 138, 255],
+        radiusMinPixels: 11,
+        radiusMaxPixels: 20,
         getPosition: d => [d.lng || (d.coords ? d.coords[1] : 0), d.lat || (d.coords ? d.coords[0] : 0)],
         getFillColor: [217, 70, 239, 245],
         getLineColor: [255, 255, 255, 255],
-        lineWidthMinPixels: 3.0
+        lineWidthMinPixels: 2.5
       })
     );
   }
@@ -502,13 +614,30 @@ function getDeckTooltip({ object }) {
   if (!object) return null;
 
   if (object.category || object.status === "Pinpointed on WebGL GIS Map") {
+    let iconClass = 'fa-camera';
+    const cat = object.category || '';
+    if (cat.includes('Road') || cat.includes('Blockage')) iconClass = 'fa-road-barrier';
+    else if (cat.includes('Landslide')) iconClass = 'fa-hill-rockslide';
+    else if (cat.includes('Flood')) iconClass = 'fa-house-tsunami';
+    else if (cat.includes('Rockfall')) iconClass = 'fa-volcano';
+
     return {
       html: `
-        <div style="font-family: sans-serif; padding: 6px; min-width: 210px;">
-          <div style="color: #ef4444; font-weight: 700; font-size: 14px; margin-bottom: 4px;">🚨 ${object.category || 'Incident Pinpoint'}</div>
-          <div style="color: #fff; font-size: 13px; margin-bottom: 4px;"><b>Report:</b> ${object.description || object.category}</div>
-          <div style="font-family: monospace; font-size: 11.5px; color: #38bdf8;">📍 Coords: ${object.lat || (object.coords ? object.coords[0] : '')}, ${object.lng || (object.coords ? object.coords[1] : '')}</div>
-          <div style="font-family: monospace; font-size: 11.5px; color: #f59e0b;">🕒 Date & Time: ${object.date || ''} ${object.time || ''}</div>
+        <div style="font-family: var(--font-main, sans-serif); padding: 4px; min-width: 230px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-family: var(--font-mono, monospace); font-size: 9.5px; font-weight: 700; background: rgba(217, 70, 239, 0.25); color: #f472b6; border: 1px solid rgba(217, 70, 239, 0.4); padding: 2px 7px; border-radius: 100px;">
+              📷 GEOTAGGED PHOTO
+            </span>
+            <span style="font-family: var(--font-mono, monospace); font-size: 10px; color: #10b981; font-weight: 600;">VERIFIED</span>
+          </div>
+          <div style="color: #f59e0b; font-family: var(--font-display, sans-serif); font-weight: 700; font-size: 14px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+            <i class="fa-solid ${iconClass}" style="color: #d946ef;"></i> ${object.category || 'Incident Pinpoint'}
+          </div>
+          <div style="color: #f8fafc; font-size: 12.5px; margin-bottom: 8px;"><b>Report:</b> ${object.description || object.category}</div>
+          <div style="background: rgba(6, 16, 26, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 6px 8px; font-family: var(--font-mono, monospace); font-size: 11px; display: flex; flex-direction: column; gap: 3px;">
+            <div style="color: #38bdf8;">📍 Coords: ${object.lat || (object.coords ? object.coords[0] : '')}, ${object.lng || (object.coords ? object.coords[1] : '')}</div>
+            <div style="color: #f59e0b;">🕒 Time: ${object.date || ''} ${object.time || ''}</div>
+          </div>
         </div>
       `
     };

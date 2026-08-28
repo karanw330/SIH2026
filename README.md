@@ -1,4 +1,4 @@
-# 🏔️ Landslide Sentinel AI — North East India GIS & Emergency Response Engine
+# 🏔️ Nisarg AI — North East India GIS & Emergency Response Engine
 
 > **Smart India Hackathon 2026 (SIH2026)**  
 > Multi-modal GIS analytics, continuous GeoTIFF landslide risk processing, 3D WebGL map visualization, and AI incident response engine for North East India.
@@ -34,7 +34,7 @@ SIH2026/
 │
 ├── 🌐 FRONTEND PORTAL (Served at /)
 ├── frontend/
-│   ├── index.html                   <-- Sentinel Landing Portal HTML
+│   ├── index.html                   <-- Nisarg Landing Portal HTML
 │   ├── css/style.css                <-- Glassmorphism Design System & Theme Styles
 │   ├── js/script.js                 <-- Interactive Counters & Portal Navigation
 │   └── images/
@@ -64,9 +64,9 @@ SIH2026/
 ```
 
 ### Live Service Endpoints:
-- 🌐 **Sentinel Landing Portal**: [`http://localhost:8000/`](http://localhost:8000/)
+- 🌐 **Nisarg Landing Portal**: [`http://localhost:8000/`](http://localhost:8000/)
 - 🗺️ **Proto2 WebGL GPU Map**: [`http://localhost:8000/proto2`](http://localhost:8000/proto2)
-- 🤖 **AI Sentinel Chatbot**: [`http://localhost:8000/chatbot`](http://localhost:8000/chatbot)
+- 🤖 **Nisarg AI Chatbot**: [`http://localhost:8000/chatbot`](http://localhost:8000/chatbot)
 
 ---
 
