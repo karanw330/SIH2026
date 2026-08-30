@@ -6,20 +6,30 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from geojson_processor import processor
-from tif_processor import tif_processor
 from fastapi.responses import FileResponse
 
 # --------------------------------------------------------------------------
-# Root Directory Setup
+# Root & Backend Directory Setup
 # --------------------------------------------------------------------------
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(backend_dir)
 proto2_dir = os.path.join(root_dir, "proto2")
 frontend_dir = os.path.join(root_dir, "frontend")
 chatbot_dir = os.path.join(root_dir, "Chatbot")
 
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
 if chatbot_dir not in sys.path:
     sys.path.insert(0, chatbot_dir)
+
+try:
+    from backend.geojson_processor import processor
+    from backend.tif_processor import tif_processor
+except ImportError:
+    from geojson_processor import processor
+    from tif_processor import tif_processor
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,9 +44,10 @@ async def lifespan(app: FastAPI):
     import shutil
     src_hero = os.path.join(root_dir, "hero-bg.jpg")
     dest_hero_dir = os.path.join(frontend_dir, "images")
-    if os.path.exists(src_hero):
+    dest_hero_file = os.path.join(dest_hero_dir, "hero-bg.jpg")
+    if os.path.exists(src_hero) and not os.path.exists(dest_hero_file):
         os.makedirs(dest_hero_dir, exist_ok=True)
-        shutil.copy(src_hero, os.path.join(dest_hero_dir, "hero-bg.jpg"))
+        shutil.copy(src_hero, dest_hero_file)
     yield
 
 app = FastAPI(
@@ -571,5 +582,9 @@ if os.path.exists(frontend_dir):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    reload_excludes = ["*.png", "*.jpg", "*.tif", "*.geojson", "backend/cache/*", "frontend/images/*"]
+    try:
+        uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True, reload_excludes=reload_excludes)
+    except Exception:
+        uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, reload_excludes=reload_excludes)
 
