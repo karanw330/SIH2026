@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Sentinel Chatbot — North East Landslide Risk & Response Engine</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons & Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Top Glassmorphism Navigation Bar -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-icon">
+        <i class="fa-solid fa-robot"></i>
+      </div>
+      <div>
+        <h1 class="brand-title">Landslide Sentinel <span class="tag-ai">AI Agent</span></h1>
+        <div class="brand-subtitle">Quantized Offline Tool Engine · FastAPI Integrated</div>
+      </div>
+    </div>
+
+    <div class="nav-links">
+      <a href="/" class="nav-btn"><i class="fa-solid fa-arrow-left"></i> Sentinel Portal</a>
+      <a href="/proto2/" class="nav-btn btn-map"><i class="fa-solid fa-map-location-dot"></i> WebGL Map (Proto2 MVP)</a>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    
+    <!-- Left Control Panel -->
+    <aside class="panel">
+      <div class="panel-header">
+        <h2 class="panel-title"><i class="fa-solid fa-sliders"></i> Live Field & Incident Controls</h2>
+      </div>
+
+      <!-- Field Photo Upload -->
+      <div class="control-group">
+        <div class="control-label"><i class="fa-solid fa-camera"></i> Field Geotagged Photo EXIF Upload</div>
+        <div class="upload-dropzone" id="dropzone">
+          <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+          <div class="upload-title">Drop Hazard Photo Here</div>
+          <div class="upload-sub">or click to browse JPEG / PNG with EXIF GPS</div>
+        </div>
+        <input type="file" id="photo-input" accept="image/*" style="display: none;" />
+        <div id="upload-status" class="status-msg"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Pinpointed Incident Map -->
+      <div class="control-group">
+        <div class="control-label"><i class="fa-solid fa-location-crosshairs"></i> Pinpointed Incident Map</div>
+        <div id="incident-map" style="height: 190px; width: 100%; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; background: #081522;"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Alert Dispatcher -->
+      <div class="control-group">
+        <div class="control-label"><i class="fa-solid fa-bullhorn"></i> Localized Alert Dispatcher</div>
+        <select id="district-select" class="custom-select">
+          <option value="Upper Siang">Upper Siang (Arunachal Pradesh)</option>
+          <option value="Tezpur">Tezpur (Assam)</option>
+          <option value="Guwahati">Guwahati (Assam)</option>
+          <option value="Papum Pare">Papum Pare (Arunachal Pradesh)</option>
+          <option value="Kohima">Kohima (Nagaland)</option>
+          <option value="Aizawl">Aizawl (Mizoram)</option>
+        </select>
+        <button class="btn-dispatch" id="dispatch-btn"><i class="fa-solid fa-paper-plane"></i> Dispatch Multilingual SMS Cards</button>
+      </div>
+
+    </aside>
+
+    <!-- Right Interactive AI Chatbot Feed -->
+    <main class="chat-container">
+      <div class="chat-header">
+        <div class="chat-title-group">
+          <i class="fa-solid fa-microchip status-icon"></i>
+          <div>
+            <h3 class="chat-title">AI Sentinel Reasoning Assistant</h3>
+            <div class="chat-sub">Tool-enabled Agent · Pasighat / Upper Siang Corridor</div>
+          </div>
+        </div>
+        <span class="status-badge"><span class="dot-online"></span> ACTIVE AGENT</span>
+      </div>
+
+      <!-- Messages Feed -->
+      <div class="chat-messages" id="chat-feed">
+        <div class="msg bot">
+          <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+          <div class="msg-bubble">
+            <div class="msg-author">AI Sentinel Agent</div>
+            Welcome! Upload a field geotagged photo to pinpoint incidents (Road Blockage, Landslide, Flash Flood) or describe custom hazards to trigger emergency dispatches.
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Prompt Chips -->
+      <div class="chat-chips">
+        <button class="chip" onclick="sendPrompt('Query nearest emergency resources around Upper Siang [28.06, 95.32]')"><i class="fa-solid fa-truck-medical"></i> Emergency Assets</button>
+        <button class="chip" onclick="sendPrompt('Reroute Guwahati to Tezpur corridor bypassing NE_HAZ_402')"><i class="fa-solid fa-route"></i> Alternate Corridor</button>
+        <button class="chip" onclick="sendPrompt('Dispatch Multilingual SMS alerts for Upper Siang')"><i class="fa-solid fa-message"></i> Multilingual Dispatches</button>
+      </div>
+
+      <!-- Chat Input Area -->
+      <div class="chat-input-area">
+        <input type="text" id="user-input" class="chat-input" placeholder="Type query or custom 3-4 word incident description..." autocomplete="off" />
+        <button class="send-btn" id="send-btn"><i class="fa-solid fa-paper-plane"></i></button>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

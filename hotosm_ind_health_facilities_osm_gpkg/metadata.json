@@ -1,0 +1,388 @@
+{
+  "feature_count": 142629,
+  "geometry_types": {
+    "POINT": 132863,
+    "POLYGON": 9748,
+    "MULTIPOLYGON": 18
+  },
+  "bbox": [
+    68.5803224,
+    8.0829418,
+    97.017277,
+    34.8482392
+  ],
+  "columns": [
+    {
+      "name": "id",
+      "type": "VARCHAR",
+      "null_count": 0,
+      "null_percent": 0.0,
+      "distinct_count": 142629,
+      "top_values": []
+    },
+    {
+      "name": "name",
+      "type": "VARCHAR",
+      "null_count": 3478,
+      "null_percent": 2.44,
+      "distinct_count": 117841,
+      "top_values": []
+    },
+    {
+      "name": "name_en",
+      "type": "VARCHAR",
+      "null_count": 141126,
+      "null_percent": 98.95,
+      "distinct_count": 1426,
+      "top_values": []
+    },
+    {
+      "name": "name_hi",
+      "type": "VARCHAR",
+      "null_count": 140272,
+      "null_percent": 98.35,
+      "distinct_count": 2273,
+      "top_values": []
+    },
+    {
+      "name": "amenity",
+      "type": "VARCHAR",
+      "null_count": 43761,
+      "null_percent": 30.68,
+      "distinct_count": 36,
+      "top_values": [
+        {
+          "value": "hospital",
+          "count": 55346
+        },
+        {
+          "value": "clinic",
+          "count": 22472
+        },
+        {
+          "value": "pharmacy",
+          "count": 7634
+        },
+        {
+          "value": "dentist",
+          "count": 6146
+        },
+        {
+          "value": "doctors",
+          "count": 3677
+        }
+      ]
+    },
+    {
+      "name": "building",
+      "type": "VARCHAR",
+      "null_count": 138040,
+      "null_percent": 96.78,
+      "distinct_count": 34,
+      "top_values": [
+        {
+          "value": "yes",
+          "count": 4164
+        },
+        {
+          "value": "hospital",
+          "count": 302
+        },
+        {
+          "value": "commercial",
+          "count": 30
+        },
+        {
+          "value": "house",
+          "count": 19
+        },
+        {
+          "value": "apartments",
+          "count": 10
+        }
+      ]
+    },
+    {
+      "name": "healthcare",
+      "type": "VARCHAR",
+      "null_count": 57325,
+      "null_percent": 40.19,
+      "distinct_count": 116,
+      "top_values": [
+        {
+          "value": "centre",
+          "count": 39436
+        },
+        {
+          "value": "hospital",
+          "count": 19240
+        },
+        {
+          "value": "clinic",
+          "count": 8550
+        },
+        {
+          "value": "pharmacy",
+          "count": 5195
+        },
+        {
+          "value": "yes",
+          "count": 4347
+        }
+      ]
+    },
+    {
+      "name": "healthcare_speciality",
+      "type": "VARCHAR",
+      "null_count": 136487,
+      "null_percent": 95.69,
+      "distinct_count": 1594,
+      "top_values": []
+    },
+    {
+      "name": "operator_type",
+      "type": "VARCHAR",
+      "null_count": 132689,
+      "null_percent": 93.03,
+      "distinct_count": 44,
+      "top_values": [
+        {
+          "value": "government",
+          "count": 6415
+        },
+        {
+          "value": "private",
+          "count": 3177
+        },
+        {
+          "value": "public",
+          "count": 123
+        },
+        {
+          "value": "charity",
+          "count": 50
+        },
+        {
+          "value": "Private",
+          "count": 45
+        }
+      ]
+    },
+    {
+      "name": "capacity_persons",
+      "type": "VARCHAR",
+      "null_count": 142629,
+      "null_percent": 100.0,
+      "distinct_count": 0,
+      "top_values": []
+    },
+    {
+      "name": "addr_full",
+      "type": "VARCHAR",
+      "null_count": 40903,
+      "null_percent": 28.68,
+      "distinct_count": 81818,
+      "top_values": []
+    },
+    {
+      "name": "addr_city",
+      "type": "VARCHAR",
+      "null_count": 133621,
+      "null_percent": 93.68,
+      "distinct_count": 2490,
+      "top_values": []
+    },
+    {
+      "name": "source",
+      "type": "VARCHAR",
+      "null_count": 142629,
+      "null_percent": 100.0,
+      "distinct_count": 0,
+      "top_values": []
+    },
+    {
+      "name": "adm0_pcode",
+      "type": "VARCHAR",
+      "null_count": 0,
+      "null_percent": 0.0,
+      "distinct_count": 1,
+      "top_values": [
+        {
+          "value": "IND",
+          "count": 142629
+        }
+      ]
+    },
+    {
+      "name": "adm0_name",
+      "type": "VARCHAR",
+      "null_count": 0,
+      "null_percent": 0.0,
+      "distinct_count": 1,
+      "top_values": [
+        {
+          "value": "India",
+          "count": 142629
+        }
+      ]
+    },
+    {
+      "name": "adm1_pcode",
+      "type": "VARCHAR",
+      "null_count": 1358,
+      "null_percent": 0.95,
+      "distinct_count": 34,
+      "top_values": [
+        {
+          "value": "1811400B15614733245507",
+          "count": 16360
+        },
+        {
+          "value": "1811400B45534780755480",
+          "count": 13972
+        },
+        {
+          "value": "1811400B21167269026319",
+          "count": 11924
+        },
+        {
+          "value": "1811400B25711494603400",
+          "count": 9889
+        },
+        {
+          "value": "1811400B80305611676067",
+          "count": 9158
+        }
+      ]
+    },
+    {
+      "name": "adm1_name",
+      "type": "VARCHAR",
+      "null_count": 1358,
+      "null_percent": 0.95,
+      "distinct_count": 34,
+      "top_values": [
+        {
+          "value": "Mah\u0101r\u0101shtra",
+          "count": 16360
+        },
+        {
+          "value": "Kerala",
+          "count": 13972
+        },
+        {
+          "value": "Tamil N\u0101du",
+          "count": 11924
+        },
+        {
+          "value": "Telang\u0101na",
+          "count": 9889
+        },
+        {
+          "value": "Gujar\u0101t",
+          "count": 9158
+        }
+      ]
+    },
+    {
+      "name": "adm2_pcode",
+      "type": "VARCHAR",
+      "null_count": 1358,
+      "null_percent": 0.95,
+      "distinct_count": 693,
+      "top_values": [
+        {
+          "value": "76128533B76927648517269",
+          "count": 3799
+        },
+        {
+          "value": "76128533B60360721573267",
+          "count": 2320
+        },
+        {
+          "value": "76128533B71380851181380",
+          "count": 2053
+        },
+        {
+          "value": "76128533B75519739609062",
+          "count": 1797
+        },
+        {
+          "value": "76128533B75696328527555",
+          "count": 1547
+        }
+      ]
+    },
+    {
+      "name": "adm2_name",
+      "type": "VARCHAR",
+      "null_count": 1358,
+      "null_percent": 0.95,
+      "distinct_count": 686,
+      "top_values": [
+        {
+          "value": "Bangalore",
+          "count": 3799
+        },
+        {
+          "value": "Indore",
+          "count": 2320
+        },
+        {
+          "value": "Pune",
+          "count": 2053
+        },
+        {
+          "value": "Ernakulam",
+          "count": 1797
+        },
+        {
+          "value": "Thrissur",
+          "count": 1547
+        }
+      ]
+    },
+    {
+      "name": "adm3_pcode",
+      "type": "VARCHAR",
+      "null_count": 1358,
+      "null_percent": 0.95,
+      "distinct_count": 6180,
+      "top_values": []
+    },
+    {
+      "name": "adm3_name",
+      "type": "VARCHAR",
+      "null_count": 1358,
+      "null_percent": 0.95,
+      "distinct_count": 5910,
+      "top_values": []
+    },
+    {
+      "name": "adm4_pcode",
+      "type": "VARCHAR",
+      "null_count": 142629,
+      "null_percent": 100.0,
+      "distinct_count": 0,
+      "top_values": []
+    },
+    {
+      "name": "adm4_name",
+      "type": "VARCHAR",
+      "null_count": 142629,
+      "null_percent": 100.0,
+      "distinct_count": 0,
+      "top_values": []
+    },
+    {
+      "name": "name_latin",
+      "type": "VARCHAR",
+      "null_count": 3150,
+      "null_percent": 2.21,
+      "distinct_count": 118031,
+      "top_values": []
+    }
+  ],
+  "summary": "142,629 features. geometry types: 132,863 POINT, 9,748 POLYGON, 18 MULTIPOLYGON. 10 of 24 columns are >=50% null (name_en, name_hi, building, healthcare_speciality, operator_type, capacity_persons, addr_city, source, adm4_pcode, adm4_name).",
+  "temporal": null
+}
