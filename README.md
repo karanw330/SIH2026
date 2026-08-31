@@ -87,9 +87,10 @@ The system relies on 2 core GIS datasets located in the project root:
    - Fast raster queries (`tif_processor.py`) using `rasterio` / `tifffile` / `Pillow`.
    - Generates smooth color-gradient PNG overlays on application startup.
 
-2. **Road Routing & Critical Hazard Detection (Score ≥ 0.75)**:
-   - Road path calculation (`GET /api/route`) proxies Bhuvan/OSRM and samples route geometry points against the GeoTIFF raster.
-   - Segments passing through **Critical Hazard zones ($\ge 0.75$)** are automatically extracted and highlighted in **Glowing Red** on the WebGL map.
+2. **Dynamic Alternative Routing & Hazard Assessment**:
+   - Primary and Alternative road path calculations use the **TomTom Routing API** (`/api/route` and `/api/route/analyze`).
+   - While it does not guarantee a mathematically optimal "minimum risk" path through the hazard raster, it generates geographical alternative routes and evaluates them against the model.
+   - Segments passing through **Critical Hazard zones ($\ge 0.75$)** are automatically extracted from the `.tif` dataset and highlighted in **Glowing Red** on the WebGL map.
 
 3. **Field Geotagged Photo EXIF Inspection**:
    - Parses camera EXIF GPS tags (`POST /api/agent/upload-incident`).
@@ -104,6 +105,10 @@ The system relies on 2 core GIS datasets located in the project root:
 
 6. **100% Free, Zero-API-Key Basemaps**:
    - Uses Esri World Dark Gray Canvas, OpenStreetMap, and Esri World Imagery with **zero watermarks** and **zero API key dependencies**.
+
+7. **Nearby Health Infrastructure Integration**:
+   - Fetches live nearby facilities (Hospitals, Clinics, Pharmacies) using the **Overpass API** based on map bounds (`GET /api/proximity`).
+   - Visually plots essential infrastructure for disaster response.
 
 ---
 
@@ -123,7 +128,7 @@ cd c:\Users\Karan\Desktop\cursorprojects\SIH2026
 Create a `.env` file in the project root directory and add the environment variable:
 
 ```env
-BHUVAN_ROUTING_KEY=your_bhuvan_routing_key_here
+TOMTOM_API_KEY=your_tomtom_api_key_here
 ```
 
 Ensure the following 2 required GIS dataset files are placed in the project root directory:

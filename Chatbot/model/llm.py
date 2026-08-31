@@ -1,57 +1,35 @@
 import os
 import json
-import urllib.request
 from typing import Dict, Any
+from llama_cpp import Llama
 
 class LocalLLM:
     _instance = None
 
-    def __new__(cls, model_path: str = None, n_ctx: int = 8192):
+    def __new__(cls, model_path: str = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf", n_ctx: int = 2048):
         if cls._instance is None:
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"Model file not found at {model_path}.")
+            
             cls._instance = super(LocalLLM, cls).__new__(cls)
-            cls._instance.api_key = os.getenv("GROQ_API_KEY")
-            if not cls._instance.api_key:
-                print("Warning: GROQ_API_KEY environment variable not set.")
+            cls._instance.llm = Llama(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=4,  # Tuned for Intel i5-1155G7 core performance
+                verbose=False
+            )
         return cls._instance
 
-    def generate_json(self, prompt: str, temperature: float = 0.1, max_tokens: int = 1024) -> Dict[str, Any]:
-        if not self.api_key:
-            return {
-                "thought": "GROQ_API_KEY is missing.",
-                "action": "final_answer",
-                "action_input": "Error: GROQ_API_KEY environment variable is not set. Please set it to use the Groq API."
-            }
-
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+    def generate_json(self, prompt: str, temperature: float = 0.1, max_tokens: int = 256) -> Dict[str, Any]:
+        response = self.llm(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stop=["<|im_end|>", "```"],
+            echo=False
+        )
+        raw_text = response["choices"][0]["text"].strip()
         
-        # Wrap the ChatML formatted prompt as a single user message
-        data = {
-            "model": "llama-3.3-70b-versatile",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "response_format": {"type": "json_object"}
-        }
-
-        req = urllib.request.Request(url, headers=headers, data=json.dumps(data).encode("utf-8"))
-        
-        try:
-            with urllib.request.urlopen(req, timeout=15) as res:
-                body = res.read().decode("utf-8")
-                resp_data = json.loads(body)
-                raw_text = resp_data["choices"][0]["message"]["content"]
-        except Exception as e:
-            return {
-                "thought": f"API request failed: {e}",
-                "action": "final_answer",
-                "action_input": f"Groq API Error: {str(e)}"
-            }
-
-        raw_text = raw_text.strip()
         if raw_text.startswith("```json"):
             raw_text = raw_text[7:]
         if raw_text.startswith("```"):

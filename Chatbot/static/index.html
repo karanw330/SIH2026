@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Sentinel Chatbot — North East Landslide Risk & Response Engine</title>
+  <title>Nisarg AI Chatbot — North East Landslide Risk & Response Engine</title>
   
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,15 +25,16 @@
         <i class="fa-solid fa-robot"></i>
       </div>
       <div>
-        <h1 class="brand-title">Landslide Sentinel <span class="tag-ai">AI Agent</span></h1>
+        <h1 class="brand-title">Nisarg <span class="tag-ai">AI Agent</span></h1>
         <div class="brand-subtitle">Quantized Offline Tool Engine · FastAPI Integrated</div>
       </div>
     </div>
 
     <div class="nav-links">
-      <a href="/" class="nav-btn"><i class="fa-solid fa-arrow-left"></i> Sentinel Portal</a>
+      <a href="/" class="nav-btn"><i class="fa-solid fa-arrow-left"></i> Nisarg Portal</a>
       <a href="/proto2/" class="nav-btn btn-map"><i class="fa-solid fa-map-location-dot"></i> WebGL Map (Proto2 MVP)</a>
     </div>
+
   </header>
 
   <!-- Main Container -->
@@ -48,7 +49,7 @@
       <!-- Field Photo Upload -->
       <div class="control-group">
         <div class="control-label"><i class="fa-solid fa-camera"></i> Field Geotagged Photo EXIF Upload</div>
-        <div class="upload-dropzone" id="dropzone">
+        <div class="upload-dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload Geotagged Photo">
           <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
           <div class="upload-title">Drop Hazard Photo Here</div>
           <div class="upload-sub">or click to browse JPEG / PNG with EXIF GPS</div>
@@ -57,12 +58,23 @@
         <div id="upload-status" class="status-msg"></div>
       </div>
 
+      <!-- Quick Incident Category Triggers -->
+      <div class="control-group">
+        <div class="control-label"><i class="fa-solid fa-triangle-exclamation"></i> Instant Field Categories</div>
+        <div class="category-btn-grid">
+          <button class="cat-btn" onclick="reportQuickIncident('🚧 Road Blockage')">🚧 Road Blockage</button>
+          <button class="cat-btn" onclick="reportQuickIncident('⛰️ Landslide Failure')">⛰️ Landslide</button>
+          <button class="cat-btn" onclick="reportQuickIncident('🌊 Flash Flood')">🌊 Flash Flood</button>
+          <button class="cat-btn" onclick="reportQuickIncident('🪨 Rockfall Debris')">🪨 Rockfall</button>
+        </div>
+      </div>
+
       <div class="divider"></div>
 
       <!-- Pinpointed Incident Map -->
       <div class="control-group">
         <div class="control-label"><i class="fa-solid fa-location-crosshairs"></i> Pinpointed Incident Map</div>
-        <div id="incident-map" style="height: 190px; width: 100%; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; background: #081522;"></div>
+        <div id="incident-map"></div>
       </div>
 
       <div class="divider"></div>
@@ -89,11 +101,14 @@
         <div class="chat-title-group">
           <i class="fa-solid fa-microchip status-icon"></i>
           <div>
-            <h3 class="chat-title">AI Sentinel Reasoning Assistant</h3>
+            <h3 class="chat-title">Nisarg AI Reasoning Assistant</h3>
             <div class="chat-sub">Tool-enabled Agent · Pasighat / Upper Siang Corridor</div>
           </div>
         </div>
-        <span class="status-badge"><span class="dot-online"></span> ACTIVE AGENT</span>
+        <div class="chat-header-actions">
+          <span class="status-badge"><span class="dot-online"></span> ACTIVE AGENT</span>
+          <button class="clear-feed-btn" id="clear-feed-btn" title="Clear Chat Feed"><i class="fa-solid fa-rotate-left"></i> Clear</button>
+        </div>
       </div>
 
       <!-- Messages Feed -->
@@ -101,7 +116,7 @@
         <div class="msg bot">
           <div class="avatar"><i class="fa-solid fa-robot"></i></div>
           <div class="msg-bubble">
-            <div class="msg-author">AI Sentinel Agent</div>
+            <div class="msg-author">Nisarg AI Agent</div>
             Welcome! Upload a field geotagged photo to pinpoint incidents (Road Blockage, Landslide, Flash Flood) or describe custom hazards to trigger emergency dispatches.
           </div>
         </div>
@@ -117,7 +132,7 @@
       <!-- Chat Input Area -->
       <div class="chat-input-area">
         <input type="text" id="user-input" class="chat-input" placeholder="Type query or custom 3-4 word incident description..." autocomplete="off" />
-        <button class="send-btn" id="send-btn"><i class="fa-solid fa-paper-plane"></i></button>
+        <button class="send-btn" id="send-btn" aria-label="Send Message"><i class="fa-solid fa-paper-plane"></i></button>
       </div>
     </main>
 

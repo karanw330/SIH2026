@@ -392,7 +392,7 @@ function updateDeckLayers() {
         data: state.routeGeoJSON,
         pickable: false,
         stroked: true,
-        getLineColor: [6, 182, 212, 255], // Cyan
+        getLineColor: d => d.properties.color || [6, 182, 212, 255], // Dynamic or Cyan
         getLineWidth: 6,
         lineWidthMinPixels: 5
       })
@@ -1426,7 +1426,7 @@ function setupHospitalEventListeners() {
 }
 
 async function fetchTomTomAlternativeRoute(lat1, lon1, lat2, lon2) {
-  setRouteStatus('<i class="fa-solid fa-spinner fa-spin"></i> Finding safer alternative route...');
+  setRouteStatus('<i class="fa-solid fa-spinner fa-spin"></i> Generating multiple alternative routes and evaluating risks...');
   try {
     const keyRes = await fetch(`${API_BASE_URL}/api/keys/tomtom`);
     const keyData = await keyRes.json();
@@ -1435,86 +1435,111 @@ async function fetchTomTomAlternativeRoute(lat1, lon1, lat2, lon2) {
         setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> TomTom API key not configured.', true);
         return;
     }
-    const url = `https://api.tomtom.com/routing/1/calculateRoute/${lat1},${lon1}:${lat2},${lon2}/json?key=${tomtomKey}&maxAlternatives=1&alternativeType=anyRoute`;
+    
+    // Request up to 5 alternative routes from TomTom to find the safest one mathematically
+    const url = `https://api.tomtom.com/routing/1/calculateRoute/${lat1},${lon1}:${lat2},${lon2}/json?key=${tomtomKey}&maxAlternatives=5&alternativeType=anyRoute`;
     const res = await fetch(url);
     const data = await res.json();
 
-    if (data.routes && data.routes.length > 0) {
-      // Use the alternative route if available, otherwise the main one
-      const route = data.routes.length > 1 ? data.routes[1] : data.routes[0];
-      const points = [];
-      route.legs.forEach(leg => {
-        leg.points.forEach(pt => {
-          points.push([pt.longitude, pt.latitude]);
+    if (data.routes && data.routes.length > 1) {
+      
+      // We will skip data.routes[0] because it's usually the primary path. We evaluate alternatives.
+      const alternatives = data.routes.slice(1);
+      
+      const evaluateRoute = async (routeData, index) => {
+        const points = [];
+        routeData.legs.forEach(leg => {
+          leg.points.forEach(pt => points.push([pt.longitude, pt.latitude]));
         });
-      });
+        
+        const geojson = {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {
+               source: 'Alternative Route ' + (index + 1),
+               distance: routeData.summary.lengthInMeters / 1000,
+               duration: Math.round(routeData.summary.travelTimeInSeconds / 60)
+            },
+            geometry: { type: 'LineString', coordinates: points }
+          }]
+        };
 
-      const geojson = {
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          properties: {
-             source: 'Alternative Route',
-             distance: route.summary.lengthInMeters / 1000,
-             duration: Math.round(route.summary.travelTimeInSeconds / 60)
-          },
-          geometry: {
-            type: 'LineString',
-            coordinates: points
-          }
-        }]
+        try {
+          const analyzeRes = await fetch(`${API_BASE_URL}/api/route/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ geojson: geojson })
+          });
+          const analyzeData = await analyzeRes.json();
+          return { route: routeData, geojson: geojson, analysis: analyzeData };
+        } catch (err) {
+          console.error("Analysis failed for an alternative:", err);
+          return null;
+        }
       };
 
-      // Update state
-      state.routeGeoJSON = geojson;
-      state.criticalSegmentsGeoJSON = null; // Clear critical segments for the new route
-      state.weatherWarningsGeoJSON = null;
+      // Batch evaluate all alternatives concurrently
+      let evaluatedRoutes = await Promise.all(alternatives.map((r, i) => evaluateRoute(r, i)));
+      evaluatedRoutes = evaluatedRoutes.filter(r => r !== null && r.analysis.status === 'success');
+
+      if (evaluatedRoutes.length === 0) {
+          setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Failed to evaluate alternative routes.', true);
+          return;
+      }
+
+      // Sort mathematically to find the absolute safest route
+      // 1st priority: lowest number of critical sectors
+      // 2nd priority: lowest maximum susceptibility score
+      evaluatedRoutes.sort((a, b) => {
+          if (a.analysis.critical_sectors_count !== b.analysis.critical_sectors_count) {
+              return a.analysis.critical_sectors_count - b.analysis.critical_sectors_count;
+          }
+          return a.analysis.dynamic_risk - b.analysis.dynamic_risk;
+      });
+
+      const safest = evaluatedRoutes[0];
+      const dynRisk = safest.analysis.dynamic_risk;
+      
+      // Dynamic Styling Based on Risk
+      const isDangerous = dynRisk >= 0.75;
+      const highlightColor = isDangerous ? 'rgb(225, 29, 72)' : 'rgb(16, 185, 129)'; // Red or Green
+      const highlightHex = isDangerous ? '#e11d48' : '#10b981';
+      safest.geojson.features[0].properties.color = isDangerous ? [225, 29, 72, 255] : [16, 185, 129, 255];
+
+      // Update Map State
+      state.routeGeoJSON = safest.geojson;
+      // Also apply critical segments if the safest route still has them
+      state.criticalSegmentsGeoJSON = safest.analysis.critical_segments_geojson || null;
+      state.weatherWarningsGeoJSON = safest.analysis.weather_warnings_geojson || null;
       updateDeckLayers();
 
-      // Fetch dynamic risk for the new alternative route
-      try {
-        const analyzeRes = await fetch(`${API_BASE_URL}/api/route/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ geojson: geojson })
-        });
-        const analyzeData = await analyzeRes.json();
+      // Update UI Panels
+      const riskBlock = document.getElementById('dynamic-risk-block');
+      const riskContent = document.getElementById('dynamic-risk-content');
+      const travelBlock = document.getElementById('travel-advisory-block');
+      const travelContent = document.getElementById('travel-advisory-content');
+      
+      if (riskBlock && riskContent && travelBlock && travelContent) {
+        riskBlock.style.borderColor = `rgba(${isDangerous ? '225,29,72' : '16,185,129'}, 0.8)`;
+        travelBlock.style.borderColor = `rgba(${isDangerous ? '225,29,72' : '16,185,129'}, 0.8)`;
         
-        const riskBlock = document.getElementById('dynamic-risk-block');
-        const riskContent = document.getElementById('dynamic-risk-content');
-        const travelBlock = document.getElementById('travel-advisory-block');
-        const travelContent = document.getElementById('travel-advisory-content');
-        if (riskBlock && riskContent && travelBlock && travelContent) {
-          riskBlock.style.borderColor = 'rgba(16, 185, 129, 0.8)';
-          travelBlock.style.borderColor = 'rgba(16, 185, 129, 0.8)';
-          if (analyzeData.status === 'success') {
-            const dynRisk = analyzeData.dynamic_risk.toFixed(3);
-            const rain = analyzeData.max_precipitation;
-            travelContent.innerHTML = `
-                <div style="color: #10b981; font-weight: 800; font-size: 1.05rem; margin-bottom: 6px;">
-                  <i class="fa-solid fa-shield-halved"></i> ALTERNATIVE REROUTE ACTIVE
-                </div>
-            `;
-            riskContent.innerHTML = `
-                <div style="font-size: 0.85rem;"><b>Dynamic Risk:</b> <span style="color:#fff; background:#10b981; padding:2px 6px; border-radius:4px; font-weight: 700;">${dynRisk}</span></div>
-                <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 6px;">Base: ${analyzeData.max_susceptibility || '0.00'} | Rain: ${rain} mm/hr</div>
-            `;
-          } else {
-            riskContent.innerHTML = `
-                <div style="color: #10b981; font-weight: 800; font-size: 1.05rem; margin-bottom: 6px;">
-                  <i class="fa-solid fa-shield-halved"></i> ALTERNATIVE REROUTE ACTIVE
-                </div>
-                <div style="font-size: 0.85rem;">Safer alternative route generated.</div>
-            `;
-          }
-        }
-      } catch (err) {
-        console.error('Failed to analyze alternative route', err);
+        const rain = safest.analysis.max_precipitation || 0;
+        travelContent.innerHTML = `
+            <div style="color: ${highlightHex}; font-weight: 800; font-size: 1.05rem; margin-bottom: 6px;">
+              <i class="fa-solid fa-shield-halved"></i> SAFEST ALTERNATIVE ACTIVE
+            </div>
+            <div style="font-size: 0.8rem; margin-bottom: 4px;">Evaluated ${evaluatedRoutes.length} options.</div>
+        `;
+        riskContent.innerHTML = `
+            <div style="font-size: 0.85rem;"><b>Dynamic Risk:</b> <span style="color:#fff; background:${highlightHex}; padding:2px 6px; border-radius:4px; font-weight: 700;">${dynRisk.toFixed(3)}</span></div>
+            <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 6px;">Critical Sectors: ${safest.analysis.critical_sectors_count} | Rain: ${rain} mm/hr</div>
+        `;
       }
       
-      const dist = (route.summary.lengthInMeters / 1000).toFixed(1);
-      const dur = Math.round(route.summary.travelTimeInSeconds / 60);
-      setRouteStatus(`<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Safer route calculated! | <b>${dist} km</b> (~${dur} mins)`);
+      const dist = safest.geojson.features[0].properties.distance.toFixed(1);
+      const dur = safest.geojson.features[0].properties.duration;
+      setRouteStatus(`<i class="fa-solid fa-check-circle" style="color:${highlightHex};"></i> Safest route selected! | <b>${dist} km</b> (~${dur} mins)`);
     } else {
       setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Alternative routing failed.', true);
     }
@@ -1523,3 +1548,4 @@ async function fetchTomTomAlternativeRoute(lat1, lon1, lat2, lon2) {
     setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Alternative routing request failed.', true);
   }
 }
+
