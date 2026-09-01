@@ -2,7 +2,7 @@
  * North East India Spatial Map (Proto2) - WebGL & Deck.gl Application Logic
  */
 
-const API_BASE_URL = (window.location.port === '8000') ? window.location.origin : 'http://localhost:8000';
+const API_BASE_URL = window.location.origin;
 
 // Global Application State
 const state = {
@@ -16,6 +16,7 @@ const state = {
   currentGeoJSON: null,
   currentLandslidesGeoJSON: null,
   currentHazardGeoJSON: null,
+  hospitalsData: [],
   allDistrictsByState: {},
   activeFilters: {
     state: '',
@@ -34,9 +35,7 @@ const state = {
   availableYears: [],
   yearsCount: {},
   boundsNE: null,
-  currentStyle: 'dark',
-  fieldIncidents: [],
-  htmlIncidentMarkers: []
+  currentStyle: 'dark'
 };
 
 // MapLibre Tile Styles (100% Free, Zero-API-Key Raster Tile Sources)
@@ -111,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchFieldIncidents();
   setupEventListeners();
   setupRoutingEventListeners();
+  setupHospitalEventListeners();
   setTimeout(checkUrlTargeting, 1000);
 });
 
@@ -122,78 +122,9 @@ async function fetchFieldIncidents() {
     const data = await res.json();
     state.fieldIncidents = data.incidents || [];
     updateDeckLayers();
-    renderFieldIncidentHtmlMarkers();
   } catch (err) {
     console.warn('Field incidents fetch note:', err);
   }
-}
-
-function renderFieldIncidentHtmlMarkers() {
-  if (!state.map) return;
-  if (state.htmlIncidentMarkers) {
-    state.htmlIncidentMarkers.forEach(m => m.remove());
-  }
-  state.htmlIncidentMarkers = [];
-
-  if (!state.fieldIncidents || state.fieldIncidents.length === 0) return;
-
-  state.fieldIncidents.forEach((inc, idx) => {
-    const lat = inc.lat || (inc.coords ? inc.coords[0] : null);
-    const lng = inc.lng || (inc.coords ? inc.coords[1] : null);
-    if (!lat || !lng) return;
-
-    const category = inc.category || 'Field Incident Pinpoint';
-    const desc = inc.description || category;
-    const date = inc.date || '';
-    const time = inc.time || '';
-    const incId = inc.id || `INC-${101 + idx}`;
-
-    let iconClass = 'fa-camera';
-    if (category.includes('Road') || category.includes('Blockage')) iconClass = 'fa-road-barrier';
-    else if (category.includes('Landslide')) iconClass = 'fa-hill-rockslide';
-    else if (category.includes('Flood')) iconClass = 'fa-house-tsunami';
-    else if (category.includes('Rockfall')) iconClass = 'fa-volcano';
-
-    const el = document.createElement('div');
-    el.className = 'geotag-beacon-container';
-    el.innerHTML = `
-      <div class="geotag-beacon-ring"></div>
-      <div class="geotag-beacon-core" title="${category}">
-        <i class="fa-solid ${iconClass}"></i>
-      </div>
-      <div class="geotag-beacon-badge">${incId}</div>
-    `;
-
-    const marker = new maplibregl.Marker({ element: el })
-      .setLngLat([lng, lat])
-      .addTo(state.map);
-
-    const popup = new maplibregl.Popup({ closeOnClick: true, offset: [0, -18], className: 'custom-incident-popup' })
-      .setLngLat([lng, lat])
-      .setHTML(`
-        <div style="font-family: var(--font-main, sans-serif); min-width: 230px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
-            <span style="font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 700; background: rgba(217, 70, 239, 0.2); color: #f472b6; border: 1px solid rgba(217, 70, 239, 0.4); padding: 2px 8px; border-radius: 100px; text-transform: uppercase;">
-              🚨 ${incId}
-            </span>
-            <span style="font-family: var(--font-mono, monospace); font-size: 10px; color: #10b981; font-weight: 600;">ACTIVE INCIDENT</span>
-          </div>
-          <h3 style="font-family: var(--font-display, sans-serif); color: #f59e0b; font-size: 15px; font-weight: 700; margin: 0 0 6px 0; display: flex; align-items: center; gap: 6px;">
-            <i class="fa-solid ${iconClass}" style="color: #d946ef;"></i> ${category}
-          </h3>
-          <div style="color: #f1f5f9; font-size: 13px; margin-bottom: 10px; line-height: 1.4;">
-            <b>Field Report:</b> ${desc}
-          </div>
-          <div style="background: rgba(6, 16, 26, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px; font-family: var(--font-mono, monospace); font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
-            <div style="color: #38bdf8;">📍 Coords: ${lat}, ${lng}</div>
-            ${date ? `<div style="color: #f59e0b;">🕒 Time: ${date} ${time}</div>` : ''}
-          </div>
-        </div>
-      `);
-
-    marker.setPopup(popup);
-    state.htmlIncidentMarkers.push(marker);
-  });
 }
 
 // Check URL Query Parameters for Targeted Incident Pinpointing (e.g. ?lat=28.06&lng=95.32)
@@ -209,49 +140,25 @@ function checkUrlTargeting() {
     const date = params.get('date') || new Date().toISOString().split('T')[0];
     const time = params.get('time') || new Date().toTimeString().split(' ')[0];
 
-    state.map.flyTo({ center: [lng, lat], zoom: 13.2, pitch: 35, duration: 2400 });
+    state.map.flyTo({ center: [lng, lat], zoom: 12.8, pitch: 25, duration: 2200 });
 
-    let iconClass = 'fa-camera';
-    if (category.includes('Road') || category.includes('Blockage')) iconClass = 'fa-road-barrier';
-    else if (category.includes('Landslide')) iconClass = 'fa-hill-rockslide';
-    else if (category.includes('Flood')) iconClass = 'fa-house-tsunami';
-    else if (category.includes('Rockfall')) iconClass = 'fa-volcano';
-
-    // Create multi-ring glowing purple beacon marker for geotagged photo incident
+    // Create pulsing purple HTML beacon marker for maximum visibility
     const el = document.createElement('div');
-    el.className = 'geotag-beacon-container';
-    el.innerHTML = `
-      <div class="geotag-beacon-ring"></div>
-      <div class="geotag-beacon-core" title="${category}">
-        <i class="fa-solid ${iconClass}"></i>
-      </div>
-      <div class="geotag-beacon-badge">EXIF VERIFIED</div>
-    `;
+    el.className = 'purple-pulsing-marker';
+    el.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
 
     new maplibregl.Marker({ element: el })
       .setLngLat([lng, lat])
       .addTo(state.map);
 
-    new maplibregl.Popup({ closeOnClick: false, offset: [0, -18], className: 'custom-incident-popup' })
+    new maplibregl.Popup({ closeOnClick: false, offset: [0, -14] })
       .setLngLat([lng, lat])
       .setHTML(`
-        <div style="font-family: var(--font-main, sans-serif); min-width: 230px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
-            <span style="font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 700; background: rgba(217, 70, 239, 0.2); color: #f472b6; border: 1px solid rgba(217, 70, 239, 0.4); padding: 2px 8px; border-radius: 100px; text-transform: uppercase;">
-              📷 EXIF Geotagged Photo
-            </span>
-            <span style="font-family: var(--font-mono, monospace); font-size: 10px; color: #10b981; font-weight: 600;">VERIFIED</span>
-          </div>
-          <h3 style="font-family: var(--font-display, sans-serif); color: #f59e0b; font-size: 15px; font-weight: 700; margin: 0 0 6px 0; display: flex; align-items: center; gap: 6px;">
-            <i class="fa-solid ${iconClass}" style="color: #d946ef;"></i> ${category}
-          </h3>
-          <div style="color: #f1f5f9; font-size: 13px; margin-bottom: 10px; line-height: 1.4;">
-            <b>Field Report:</b> ${desc}
-          </div>
-          <div style="background: rgba(6, 16, 26, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px; font-family: var(--font-mono, monospace); font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
-            <div style="color: #38bdf8;">📍 Coords: ${lat}, ${lng}</div>
-            <div style="color: #f59e0b;">🕒 Time: ${date} at ${time}</div>
-          </div>
+        <div style="font-family: sans-serif; padding: 6px; color: #081522; min-width: 210px;">
+          <div style="color: #c084fc; font-weight: 800; font-size: 15px; margin-bottom: 4px;"><i class="fa-solid fa-triangle-exclamation"></i> ${category}</div>
+          <div style="color: #0f172a; font-size: 13px; margin-bottom: 6px;"><b>What Happened:</b> ${desc}</div>
+          <div style="font-family: monospace; font-size: 11.5px; color: #0284c7;">📍 Coords: ${lat}, ${lng}</div>
+          <div style="font-family: monospace; font-size: 11.5px; color: #d97706;">🕒 Date & Time: ${date} at ${time}</div>
         </div>
       `)
       .addTo(state.map);
@@ -392,76 +299,47 @@ function addRasterSourceAndLayer(info, shouldFitBounds = true) {
   }
 }
 
-// In-Memory Point Query Cache for GeoTIFF Raster Queries
-const rasterPointCache = new Map();
-
-// Query continuous probability score at lat/lon click point with LRU caching
+// Query continuous probability score at lat/lon click point
 async function inspectRasterPoint(lat, lng) {
-  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-  let data;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/raster/susceptibility/query?lat=${lat}&lon=${lng}`);
+    if (!res.ok) return;
+    const data = await res.json();
 
-  if (rasterPointCache.has(cacheKey)) {
-    data = rasterPointCache.get(cacheKey);
-  } else {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/raster/susceptibility/query?lat=${lat}&lon=${lng}`);
-      if (!res.ok) return;
-      data = await res.json();
-      if (rasterPointCache.size > 200) {
-        const firstKey = rasterPointCache.keys().next().value;
-        rasterPointCache.delete(firstKey);
-      }
-      rasterPointCache.set(cacheKey, data);
-    } catch (err) {
-      console.warn('Raster query failed:', err);
-      return;
-    }
+    const score = data.probability_score !== undefined ? data.probability_score : 0.0;
+    const pct = data.percentage || `${(score * 100).toFixed(1)}%`;
+    const cat = data.risk_category || 'Susceptibility Score';
+    const color = data.color || '#a855f7';
+
+    new maplibregl.Popup({ closeButton: true, className: 'custom-raster-popup' })
+      .setLngLat([lng, lat])
+      .setHTML(`
+        <div style="font-family: var(--font-main); padding: 4px;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <i class="fa-solid fa-layer-group" style="color: ${color}; font-size: 1.1rem;"></i>
+            <h4 style="margin: 0; font-size: 0.95rem; color: #fff;">Landslide Susceptibility Score</h4>
+          </div>
+          <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; border-left: 4px solid ${color};">
+            <div style="font-size: 1.25rem; font-weight: 700; color: ${color}; font-family: var(--font-heading);">
+              ${score} <span style="font-size: 0.85rem; color: #cbd5e1;">(${pct} probability)</span>
+            </div>
+            <div style="font-size: 0.8rem; font-weight: 600; color: #f8fafc; margin-top: 2px;">
+              Risk Assessment: <span style="color: ${color};">${cat}</span>
+            </div>
+            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 4px;">
+              📍 Coordinates: ${lat}, ${lng}
+            </div>
+          </div>
+        </div>
+      `)
+      .addTo(state.map);
+  } catch (err) {
+    console.warn('Raster query failed:', err);
   }
-
-  const score = data.probability_score !== undefined ? data.probability_score : 0.0;
-  const pct = data.percentage || `${(score * 100).toFixed(1)}%`;
-  const cat = data.risk_category || 'Susceptibility Score';
-  const color = data.color || '#a855f7';
-
-  new maplibregl.Popup({ closeButton: true, className: 'custom-raster-popup' })
-    .setLngLat([lng, lat])
-    .setHTML(`
-      <div style="font-family: var(--font-main); padding: 4px;">
-        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-          <i class="fa-solid fa-layer-group" style="color: ${color}; font-size: 1.1rem;"></i>
-          <h4 style="margin: 0; font-size: 0.95rem; color: #fff;">Landslide Susceptibility Score</h4>
-        </div>
-        <div style="background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; border-left: 4px solid ${color};">
-          <div style="font-size: 1.25rem; font-weight: 700; color: ${color}; font-family: var(--font-heading);">
-            ${score} <span style="font-size: 0.85rem; color: #cbd5e1;">(${pct} probability)</span>
-          </div>
-          <div style="font-size: 0.8rem; font-weight: 600; color: #f8fafc; margin-top: 2px;">
-            Risk Assessment: <span style="color: ${color};">${cat}</span>
-          </div>
-          <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 4px;">
-            📍 Coordinates: ${lat}, ${lng}
-          </div>
-        </div>
-      </div>
-    `)
-    .addTo(state.map);
 }
 
-let isDeckUpdatePending = false;
-
-// Throttled Deck.gl Layer Batching via requestAnimationFrame
+// Generate Deck.gl WebGL Layers and attach to MapLibre Overlay
 function updateDeckLayers() {
-  if (!state.deckOverlay) return;
-  if (isDeckUpdatePending) return;
-
-  isDeckUpdatePending = true;
-  requestAnimationFrame(() => {
-    isDeckUpdatePending = false;
-    performDeckUpdate();
-  });
-}
-
-function performDeckUpdate() {
   if (!state.deckOverlay) return;
 
   const layers = [];
@@ -499,7 +377,7 @@ function performDeckUpdate() {
           }
           return [props.long || 0, props.lat || 0];
         },
-        getFillColor: [14, 165, 233, 220],
+        getFillColor: [14, 165, 233, 220], // Cyan
         getLineColor: [2, 132, 199, 255],
         onClick: info => handleFeatureClick(info)
       })
@@ -514,7 +392,7 @@ function performDeckUpdate() {
         data: state.routeGeoJSON,
         pickable: false,
         stroked: true,
-        getLineColor: [6, 182, 212, 255],
+        getLineColor: d => d.properties.color || [6, 182, 212, 255], // Dynamic or Cyan
         getLineWidth: 6,
         lineWidthMinPixels: 5
       })
@@ -530,9 +408,28 @@ function performDeckUpdate() {
         pickable: true,
         autoHighlight: true,
         stroked: true,
-        getLineColor: [239, 68, 68, 255],
+        getLineColor: [239, 68, 68, 255], // Glowing Pulsing Red
         getLineWidth: 10,
         lineWidthMinPixels: 8
+      })
+    );
+  }
+
+  // 4c. Extreme Weather Route Warnings Layer
+  if (state.weatherWarningsGeoJSON) {
+    layers.push(
+      new deck.GeoJsonLayer({
+        id: 'weather-warnings-layer',
+        data: state.weatherWarningsGeoJSON,
+        pickable: true,
+        stroked: true,
+        filled: true,
+        pointRadiusMinPixels: 6,
+        pointRadiusMaxPixels: 14,
+        getPointRadius: 8,
+        getFillColor: [245, 158, 11, 255], // Amber/Orange
+        getLineColor: [255, 255, 255, 255],
+        lineWidthMinPixels: 2
       })
     );
   }
@@ -542,14 +439,14 @@ function performDeckUpdate() {
   if (state.routeOrigin) {
     pins.push({
       position: [state.routeOrigin.lng, state.routeOrigin.lat],
-      color: [16, 185, 129, 255],
+      color: [16, 185, 129, 255], // Green
       label: 'Origin'
     });
   }
   if (state.routeDest) {
     pins.push({
       position: [state.routeDest.lng, state.routeDest.lat],
-      color: [239, 68, 68, 255],
+      color: [239, 68, 68, 255], // Red
       label: 'Destination'
     });
   }
@@ -570,80 +467,114 @@ function performDeckUpdate() {
     );
   }
 
-  // 6. Field-Reported Pinpointed Incidents Dual GPU Layer
+  // 6. Field-Reported Pinpointed Incidents Layer
   if (state.fieldIncidents && state.fieldIncidents.length > 0) {
-    // Outer Glowing Pulsing Halo
-    layers.push(
-      new deck.ScatterplotLayer({
-        id: 'field-incidents-halo-layer',
-        data: state.fieldIncidents,
-        pickable: false,
-        radiusMinPixels: 20,
-        radiusMaxPixels: 36,
-        getPosition: d => [d.lng || (d.coords ? d.coords[1] : 0), d.lat || (d.coords ? d.coords[0] : 0)],
-        getFillColor: [217, 70, 239, 75],
-        getLineColor: [244, 114, 182, 140],
-        lineWidthMinPixels: 1.5
-      })
-    );
-
-    // Core Beacon Symbol Layer
     layers.push(
       new deck.ScatterplotLayer({
         id: 'field-incidents-layer',
         data: state.fieldIncidents,
         pickable: true,
         autoHighlight: true,
-        highlightColor: [254, 240, 138, 255],
-        radiusMinPixels: 11,
-        radiusMaxPixels: 20,
+        radiusMinPixels: 14,
+        radiusMaxPixels: 28,
         getPosition: d => [d.lng || (d.coords ? d.coords[1] : 0), d.lat || (d.coords ? d.coords[0] : 0)],
-        getFillColor: [217, 70, 239, 245],
+        getFillColor: [217, 70, 239, 245], // Vibrant Purple #d946ef
         getLineColor: [255, 255, 255, 255],
-        lineWidthMinPixels: 2.5
+        lineWidthMinPixels: 3.0
       })
     );
   }
 
+  // 7. Nearby Hospitals Layer
+  if (state.hospitalsData && state.hospitalsData.length > 0) {
+    layers.push(
+      new deck.ScatterplotLayer({
+        id: 'nearby-hospitals-layer',
+        data: state.hospitalsData,
+        pickable: true,
+        autoHighlight: true,
+        radiusMinPixels: 10,
+        radiusMaxPixels: 20,
+        getPosition: d => {
+          if (d.longitude && d.latitude) return [parseFloat(d.longitude), parseFloat(d.latitude)];
+          if (d.lon && d.lat) return [parseFloat(d.lon), parseFloat(d.lat)];
+          if (d.geometry && d.geometry.coordinates) return d.geometry.coordinates;
+          return [0, 0];
+        },
+        getFillColor: d => {
+          const type = (d.amenity || d.healthcare || '').toLowerCase();
+          if (type.includes('hospital')) return [225, 29, 72, 255]; // Red
+          if (type.includes('clinic')) return [59, 130, 246, 255]; // Blue
+          if (type.includes('pharmacy')) return [34, 197, 94, 255]; // Green
+          if (type.includes('health')) return [168, 85, 247, 255]; // Purple
+          return [249, 115, 22, 255]; // Orange
+        },
+        getLineColor: [255, 255, 255, 255],
+        lineWidthMinPixels: 2.0
+      })
+    );
+  }
+
+  // Update Deck.gl Overlay
   state.deckOverlay.setProps({ layers });
 }
-
 
 // Hover Tooltip Callback for Deck.gl
 function getDeckTooltip({ object }) {
   if (!object) return null;
 
-  if (object.category || object.status === "Pinpointed on WebGL GIS Map") {
-    let iconClass = 'fa-camera';
-    const cat = object.category || '';
-    if (cat.includes('Road') || cat.includes('Blockage')) iconClass = 'fa-road-barrier';
-    else if (cat.includes('Landslide')) iconClass = 'fa-hill-rockslide';
-    else if (cat.includes('Flood')) iconClass = 'fa-house-tsunami';
-    else if (cat.includes('Rockfall')) iconClass = 'fa-volcano';
+  const props = object.properties || object;
 
+  if (props.warning_type === "Extreme Weather") {
     return {
       html: `
-        <div style="font-family: var(--font-main, sans-serif); padding: 4px; min-width: 230px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <span style="font-family: var(--font-mono, monospace); font-size: 9.5px; font-weight: 700; background: rgba(217, 70, 239, 0.25); color: #f472b6; border: 1px solid rgba(217, 70, 239, 0.4); padding: 2px 7px; border-radius: 100px;">
-              📷 GEOTAGGED PHOTO
-            </span>
-            <span style="font-family: var(--font-mono, monospace); font-size: 10px; color: #10b981; font-weight: 600;">VERIFIED</span>
-          </div>
-          <div style="color: #f59e0b; font-family: var(--font-display, sans-serif); font-weight: 700; font-size: 14px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-            <i class="fa-solid ${iconClass}" style="color: #d946ef;"></i> ${object.category || 'Incident Pinpoint'}
-          </div>
-          <div style="color: #f8fafc; font-size: 12.5px; margin-bottom: 8px;"><b>Report:</b> ${object.description || object.category}</div>
-          <div style="background: rgba(6, 16, 26, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 6px 8px; font-family: var(--font-mono, monospace); font-size: 11px; display: flex; flex-direction: column; gap: 3px;">
-            <div style="color: #38bdf8;">📍 Coords: ${object.lat || (object.coords ? object.coords[0] : '')}, ${object.lng || (object.coords ? object.coords[1] : '')}</div>
-            <div style="color: #f59e0b;">🕒 Time: ${object.date || ''} ${object.time || ''}</div>
-          </div>
+        <div style="font-family: sans-serif; padding: 6px; min-width: 180px;">
+          <div style="color: #f59e0b; font-weight: 700; font-size: 14px; margin-bottom: 4px;">⚠️ ${props.warning_type}</div>
+          <div style="color: #fff; font-size: 13px; margin-bottom: 4px;"><b>Alerts:</b> ${props.details}</div>
+          <div style="font-size: 12px; color: #cbd5e1;">Temp: ${props.temperature}°C</div>
+          <div style="font-size: 12px; color: #cbd5e1;">Precip: ${props.precipitation}mm</div>
+          <div style="font-size: 12px; color: #cbd5e1;">Wind: ${props.wind_speed}km/h</div>
         </div>
       `
     };
   }
 
-  const props = object.properties || {};
+  if (object.category || object.status === "Pinpointed on WebGL GIS Map") {
+    return {
+      html: `
+        <div style="font-family: sans-serif; padding: 6px; min-width: 210px;">
+          <div style="color: #ef4444; font-weight: 700; font-size: 14px; margin-bottom: 4px;">🚨 ${object.category || 'Incident Pinpoint'}</div>
+          <div style="color: #fff; font-size: 13px; margin-bottom: 4px;"><b>Report:</b> ${object.description || object.category}</div>
+          <div style="font-family: monospace; font-size: 11.5px; color: #38bdf8;">📍 Coords: ${object.lat || (object.coords ? object.coords[0] : '')}, ${object.lng || (object.coords ? object.coords[1] : '')}</div>
+          <div style="font-family: monospace; font-size: 11.5px; color: #f59e0b;">🕒 Date & Time: ${object.date || ''} ${object.time || ''}</div>
+        </div>
+      `
+    };
+  }
+
+  // Check if it's a hospital object
+  if (object.amenity || object.healthcare || (props.name && (props.name.toLowerCase().includes('hospital') || props.type === 'hospital')) || object.theme === 'hospital') {
+    const hName = props.name || props.hospital_name || object.name || 'Hospital / Medical Center';
+    const hType = props.amenity || props.healthcare || props.type || object.type || 'Medical Facility';
+    const hSpec = props.healthcare_speciality || 'General';
+    const hOp = props.operator_type || 'Unknown';
+    const hState = props.state || 'Unknown';
+    const hDist = props.district || 'Unknown';
+    const hAddr = props.addr_full || props.addr_city || '';
+    return {
+      html: `
+        <div style="font-family: var(--font-main);">
+          <h4 style="margin:0 0 4px 0; color: #f43f5e;"><i class="fa-solid fa-square-h"></i> ${hName}</h4>
+          <div><b>Type:</b> <span style="text-transform:capitalize">${hType}</span></div>
+          <div><b>Speciality:</b> <span style="text-transform:capitalize">${hSpec}</span></div>
+          <div><b>Operator:</b> <span style="text-transform:capitalize">${hOp}</span></div>
+          ${hAddr ? `<div><b>Address:</b> ${hAddr}</div>` : ''}
+          <div><b>Location:</b> ${hDist !== 'Unknown' ? hDist + ', ' : ''}${hState}</div>
+          <div><small>Distance: ${props.distance_meters ? props.distance_meters + 'm' : 'Unknown'}</small></div>
+        </div>
+      `
+    };
+  }
 
   const name = props.name || props.station_name || `Feature #${props.id || ''}`;
   const type = props.type || 'OSM Feature';
@@ -893,7 +824,6 @@ function updateDistrictDropdown() {
 
   const districts = state.allDistrictsByState[selectedState] || [];
   districts.forEach(dist => {
-
     const opt = document.createElement('option');
     opt.value = dist;
     opt.textContent = dist;
@@ -903,15 +833,6 @@ function updateDistrictDropdown() {
 
 // Setup Main UI Event Listeners
 function setupEventListeners() {
-  const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
-  if (toggleSidebarBtn) {
-    toggleSidebarBtn.addEventListener('click', () => {
-      const sidebar = document.getElementById('sidebar-controls');
-      if (sidebar) sidebar.classList.toggle('mobile-open');
-    });
-  }
-
-
   const stateSelect = document.getElementById('state-select');
   const districtSelect = document.getElementById('district-select');
   const searchInput = document.getElementById('search-input');
@@ -1218,15 +1139,16 @@ async function parseRouteInputField(type, allowGeocode = true) {
         }
       }
 
-      const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(rawVal + ', North East India')}&limit=1`);
+      const geoRes = await fetch(`${API_BASE_URL}/api/weather/geocode?name=${encodeURIComponent(rawVal)}`);
       if (geoRes.ok) {
         const geoData = await geoRes.json();
-        if (geoData && geoData.length > 0) {
-          const lat = parseFloat(geoData[0].lat);
-          const lng = parseFloat(geoData[0].lon);
+        if (geoData.status === 'success' && geoData.results && geoData.results.length > 0) {
+          const res = geoData.results[0];
+          const lat = res.latitude;
+          const lng = res.longitude;
           if (type === 'origin') state.routeOrigin = { lat, lng };
           else state.routeDest = { lat, lng };
-          inputEl.value = `${geoData[0].display_name.split(',')[0]} (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+          inputEl.value = `${res.name} (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
           updateDeckLayers();
           return true;
         }
@@ -1253,6 +1175,7 @@ function clearRoute() {
   state.pickMode = null;
   state.routeGeoJSON = null;
   state.criticalSegmentsGeoJSON = null;
+  state.weatherWarningsGeoJSON = null;
   state.routeMetadata = {};
   updateDeckLayers();
 
@@ -1263,6 +1186,11 @@ function clearRoute() {
   if (origInput) origInput.value = '';
   if (destInput) destInput.value = '';
   if (presetSelect) presetSelect.value = '';
+
+  const riskBlock = document.getElementById('dynamic-risk-block');
+  const travelBlock = document.getElementById('travel-advisory-block');
+  if (riskBlock) riskBlock.style.display = 'none';
+  if (travelBlock) travelBlock.style.display = 'none';
 
   setRouteStatus('');
 }
@@ -1290,24 +1218,334 @@ async function fetchShortestPathRoute() {
 
     state.routeGeoJSON = data.geojson;
     state.criticalSegmentsGeoJSON = data.critical_segments_geojson || null;
+    state.weatherWarningsGeoJSON = data.weather_warnings_geojson || null;
     state.routeMetadata = data;
     updateDeckLayers();
 
     const distText = data.distance_km ? ` | <b>${data.distance_km} km</b>` : '';
     const durText = data.duration_min ? ` (~${data.duration_min} mins)` : '';
 
-    let hazardAlert = '';
-    if (data.has_critical_hazards) {
-      hazardAlert = `<div style="margin-top: 6px; padding: 8px 10px; background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 6px; color: #f87171; font-weight: 700; font-size: 0.75rem;">` +
-        `<i class="fa-solid fa-triangle-exclamation"></i> CRITICAL ROUTE HAZARD: Passes through <b>${data.critical_sectors_count}</b> Critical Sector(s) (Peak Susceptibility: <span style="color:#fff; background:#dc2626; padding:1px 5px; border-radius:3px;">${data.max_susceptibility}</span> ≥ 0.75)! Highlighted in Red on WebGL map.` +
-        `</div>`;
-    } else {
-      hazardAlert = `<div style="margin-top: 4px; color: #10b981; font-size: 0.72rem;"><i class="fa-solid fa-shield-halved"></i> Safe Corridor: Peak susceptibility along route is ${data.max_susceptibility || '0.00'} (< 0.75).</div>`;
+    // FETCH WEATHER DATA
+    const weatherUrl = `${API_BASE_URL}/api/weather/route?lat1=${state.routeOrigin.lat}&lon1=${state.routeOrigin.lng}&lat2=${state.routeDest.lat}&lon2=${state.routeDest.lng}`;
+    let weatherAlert = '';
+    try {
+      const weatherRes = await fetch(weatherUrl);
+      const weatherData = await weatherRes.json();
+      if (weatherData.status === 'success' && weatherData.weather_data && weatherData.weather_data.length > 0) {
+        weatherAlert = `<div style="margin-top: 6px; padding: 8px 10px; background: rgba(59, 130, 246, 0.18); border: 1px solid rgba(59, 130, 246, 0.5); border-radius: 6px; color: #60a5fa; font-weight: 500; font-size: 0.75rem;">` +
+          `<i class="fa-solid fa-cloud-sun"></i> <b>Live Weather</b>: `;
+        weatherData.weather_data.forEach(w => {
+          let location = w.point === 'origin' ? 'Origin' : (w.point === 'destination' ? 'Dest' : 'Waypoint');
+          weatherAlert += `[${location}: ${w.weather.temperature_2m}°C, Precip: ${w.weather.precipitation}mm] `;
+        });
+        weatherAlert += `</div>`;
+      }
+    } catch(err) {
+      console.warn("Could not fetch weather", err);
     }
 
-    setRouteStatus(`<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Route calculated!${distText}${durText}${hazardAlert}`);
+    let hazardAlert = '';
+    const dynRisk = (data.dynamic_risk !== undefined) ? data.dynamic_risk.toFixed(3) : (data.max_susceptibility || '0.00');
+    const rain = (data.max_precipitation !== undefined) ? data.max_precipitation : '0.0';
+    
+    const riskBlock = document.getElementById('dynamic-risk-block');
+    const riskContent = document.getElementById('dynamic-risk-content');
+    const travelBlock = document.getElementById('travel-advisory-block');
+    const travelContent = document.getElementById('travel-advisory-content');
+    
+    if (riskBlock && riskContent && travelBlock && travelContent) {
+        riskBlock.style.display = 'block';
+        travelBlock.style.display = 'block';
+        const isDangerous = (data.has_critical_hazards || (data.dynamic_risk && data.dynamic_risk >= 0.75));
+        
+        if (isDangerous) {
+            travelContent.innerHTML = `
+                <div style="color: #ef4444; font-weight: 800; font-size: 1.05rem; margin-bottom: 6px;">
+                  <i class="fa-solid fa-ban"></i> NOT RECOMMENDED
+                </div>
+                <button id="btn-tomtom-reroute" class="btn btn-secondary" style="margin-top: 10px; width: 100%; background: #0284c7; color: white; border: none; font-weight: bold; font-size: 0.8rem; padding: 6px; border-radius: 4px; cursor: pointer;"><i class="fa-solid fa-route"></i> Find Alternative Safe Route</button>
+            `;
+            travelBlock.style.borderColor = 'rgba(239, 68, 68, 0.8)';
+            travelBlock.style.background = 'var(--bg-glass)';
+
+            riskContent.innerHTML = `
+                <div style="font-size: 0.85rem;"><b>Dynamic Risk:</b> <span style="color:#fff; background:#ef4444; padding:2px 6px; border-radius:4px; font-weight: 700;">${dynRisk}</span></div>
+                <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 6px;">Base: ${data.max_susceptibility || '0.00'} | Rain: ${rain} mm/hr</div>
+            `;
+            riskBlock.style.borderColor = 'rgba(239, 68, 68, 0.8)';
+            riskBlock.style.background = 'var(--bg-glass)';
+            hazardAlert = `<div style="margin-top: 6px; color: #f87171; font-weight: 700; font-size: 0.75rem;"><i class="fa-solid fa-triangle-exclamation"></i> Critical Route Hazard! See advisory block.</div>`;
+            
+            setTimeout(() => {
+                const btnTomTom = document.getElementById('btn-tomtom-reroute');
+                if (btnTomTom) {
+                    btnTomTom.addEventListener('click', () => {
+                        fetchTomTomAlternativeRoute(state.routeOrigin.lat, state.routeOrigin.lng, state.routeDest.lat, state.routeDest.lng);
+                    });
+                }
+            }, 0);
+        } else {
+            travelContent.innerHTML = `
+                <div style="color: #10b981; font-weight: 800; font-size: 1.05rem; margin-bottom: 6px;">
+                  <i class="fa-solid fa-thumbs-up"></i> SAFE TO TRAVEL
+                </div>
+            `;
+            travelBlock.style.borderColor = 'rgba(16, 185, 129, 0.8)';
+            travelBlock.style.background = 'var(--bg-glass)';
+
+            riskContent.innerHTML = `
+                <div style="font-size: 0.85rem;"><b>Dynamic Risk:</b> <span style="color:#fff; background:#10b981; padding:2px 6px; border-radius:4px; font-weight: 700;">${dynRisk}</span></div>
+                <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 6px;">Base: ${data.max_susceptibility || '0.00'} | Rain: ${rain} mm/hr</div>
+            `;
+            riskBlock.style.borderColor = 'rgba(16, 185, 129, 0.8)';
+            riskBlock.style.background = 'var(--bg-glass)';
+            hazardAlert = `<div style="margin-top: 4px; color: #10b981; font-size: 0.72rem;"><i class="fa-solid fa-shield-halved"></i> Safe Corridor. See advisory block.</div>`;
+        }
+    }
+
+    setRouteStatus(`<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Route calculated!${distText}${durText}${weatherAlert}${hazardAlert}`);
   } catch (err) {
     console.error('Error fetching route:', err);
     setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Request failed to connect backend.', true);
   }
 }
+
+// Nearby Hospitals Event Listeners
+function setupHospitalEventListeners() {
+  const btnFindHospitals = document.getElementById('btn-find-hospitals');
+  const btnClearHospitals = document.getElementById('btn-clear-hospitals');
+  const statusEl = document.getElementById('hospitals-status-msg');
+
+  function setHospitalStatus(msg, isError = false) {
+    if (statusEl) {
+      statusEl.style.color = isError ? '#ef4444' : 'var(--text-muted)';
+      statusEl.innerHTML = msg;
+    }
+  }
+
+  if (btnFindHospitals) {
+    btnFindHospitals.addEventListener('click', async () => {
+      if (!state.map) return;
+      const center = state.map.getCenter();
+      const lat = center.lat;
+      const lng = center.lng;
+
+      const radiusEl = document.getElementById('hospital-radius');
+      const radiusKm = radiusEl ? radiusEl.value : 5;
+      const bufferMeters = radiusKm * 1000;
+
+      const typeFilter = document.getElementById('facility-type-filter')?.value || 'all';
+      const opFilter = document.getElementById('operator-type-filter')?.value || 'all';
+
+      setHospitalStatus('<i class="fa-solid fa-spinner fa-spin"></i> Searching for health facilities near map center...');
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/proximity?theme=hospital&lat=${lat}&lon=${lng}&buffer=${bufferMeters}`);
+        const data = await res.json();
+
+        if (data.status === 'error' || !data.data) {
+          setHospitalStatus(`<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> ${data.message || 'Failed to find facilities.'}`, true);
+          return;
+        }
+
+        let hospitals = [];
+        if (data.data.hospital) {
+          hospitals = data.data.hospital;
+        } else if (Array.isArray(data.data)) {
+          hospitals = data.data;
+        } else if (data.data.features) {
+          hospitals = data.data.features;
+        }
+        
+        // Filter the results
+        hospitals = hospitals.filter(h => {
+           let typeMatch = true;
+           let opMatch = true;
+           if (typeFilter !== 'all') {
+               const facType = (h.amenity || h.healthcare || '').toLowerCase();
+               typeMatch = facType.includes(typeFilter);
+           }
+           if (opFilter !== 'all') {
+               const facOp = (h.operator_type || '').toLowerCase();
+               opMatch = facOp.includes(opFilter);
+           }
+           return typeMatch && opMatch;
+        });
+
+        if (hospitals.length === 0) {
+          setHospitalStatus('<i class="fa-solid fa-circle-exclamation"></i> No facilities found matching criteria.', true);
+          state.hospitalsData = [];
+          updateDeckLayers();
+        } else {
+          state.hospitalsData = hospitals;
+          updateDeckLayers();
+          if (btnClearHospitals) btnClearHospitals.classList.remove('hidden');
+          
+          // Breakdown counts
+          const counts = { hospital: 0, clinic: 0, pharmacy: 0, centre: 0, other: 0 };
+          hospitals.forEach(h => {
+             const t = (h.amenity || h.healthcare || '').toLowerCase();
+             if (t.includes('hospital')) counts.hospital++;
+             else if (t.includes('clinic')) counts.clinic++;
+             else if (t.includes('pharmacy')) counts.pharmacy++;
+             else if (t.includes('health')) counts.centre++;
+             else counts.other++;
+          });
+          
+          let breakdown = [];
+          if (counts.hospital) breakdown.push(`${counts.hospital} hospitals`);
+          if (counts.clinic) breakdown.push(`${counts.clinic} clinics`);
+          if (counts.pharmacy) breakdown.push(`${counts.pharmacy} pharmacies`);
+          if (counts.centre) breakdown.push(`${counts.centre} centres`);
+          if (counts.other) breakdown.push(`${counts.other} others`);
+
+          setHospitalStatus(`<i class="fa-solid fa-check-circle" style="color:#10b981;"></i> Found ${hospitals.length} facilities: ${breakdown.join(', ')}`);
+        }
+      } catch (err) {
+        console.error('Error fetching facilities:', err);
+        setHospitalStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Request failed.', true);
+      }
+    });
+  }
+
+  const radiusSlider = document.getElementById('hospital-radius');
+  if (radiusSlider) {
+     radiusSlider.addEventListener('input', (e) => {
+         const valEl = document.getElementById('radius-val');
+         if(valEl) valEl.innerText = e.target.value;
+     });
+  }
+
+  if (btnClearHospitals) {
+    btnClearHospitals.addEventListener('click', () => {
+      state.hospitalsData = [];
+      updateDeckLayers();
+      if (btnClearHospitals) btnClearHospitals.classList.add('hidden');
+      setHospitalStatus('');
+    });
+  }
+}
+
+async function fetchTomTomAlternativeRoute(lat1, lon1, lat2, lon2) {
+  setRouteStatus('<i class="fa-solid fa-spinner fa-spin"></i> Generating multiple alternative routes and evaluating risks...');
+  try {
+    const keyRes = await fetch(`${API_BASE_URL}/api/keys/tomtom`);
+    const keyData = await keyRes.json();
+    const tomtomKey = keyData.key;
+    if (!tomtomKey) {
+        setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> TomTom API key not configured.', true);
+        return;
+    }
+    
+    // Request up to 5 alternative routes from TomTom to find the safest one mathematically
+    const url = `https://api.tomtom.com/routing/1/calculateRoute/${lat1},${lon1}:${lat2},${lon2}/json?key=${tomtomKey}&maxAlternatives=5&alternativeType=anyRoute`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.routes && data.routes.length > 1) {
+      
+      // We will skip data.routes[0] because it's usually the primary path. We evaluate alternatives.
+      const alternatives = data.routes.slice(1);
+      
+      const evaluateRoute = async (routeData, index) => {
+        const points = [];
+        routeData.legs.forEach(leg => {
+          leg.points.forEach(pt => points.push([pt.longitude, pt.latitude]));
+        });
+        
+        const geojson = {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {
+               source: 'Alternative Route ' + (index + 1),
+               distance: routeData.summary.lengthInMeters / 1000,
+               duration: Math.round(routeData.summary.travelTimeInSeconds / 60)
+            },
+            geometry: { type: 'LineString', coordinates: points }
+          }]
+        };
+
+        try {
+          const analyzeRes = await fetch(`${API_BASE_URL}/api/route/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ geojson: geojson })
+          });
+          const analyzeData = await analyzeRes.json();
+          return { route: routeData, geojson: geojson, analysis: analyzeData };
+        } catch (err) {
+          console.error("Analysis failed for an alternative:", err);
+          return null;
+        }
+      };
+
+      // Batch evaluate all alternatives concurrently
+      let evaluatedRoutes = await Promise.all(alternatives.map((r, i) => evaluateRoute(r, i)));
+      evaluatedRoutes = evaluatedRoutes.filter(r => r !== null && r.analysis.status === 'success');
+
+      if (evaluatedRoutes.length === 0) {
+          setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Failed to evaluate alternative routes.', true);
+          return;
+      }
+
+      // Sort mathematically to find the absolute safest route
+      // 1st priority: lowest number of critical sectors
+      // 2nd priority: lowest maximum susceptibility score
+      evaluatedRoutes.sort((a, b) => {
+          if (a.analysis.critical_sectors_count !== b.analysis.critical_sectors_count) {
+              return a.analysis.critical_sectors_count - b.analysis.critical_sectors_count;
+          }
+          return a.analysis.dynamic_risk - b.analysis.dynamic_risk;
+      });
+
+      const safest = evaluatedRoutes[0];
+      const dynRisk = safest.analysis.dynamic_risk;
+      
+      // Dynamic Styling Based on Risk
+      const isDangerous = dynRisk >= 0.75;
+      const highlightColor = isDangerous ? 'rgb(225, 29, 72)' : 'rgb(16, 185, 129)'; // Red or Green
+      const highlightHex = isDangerous ? '#e11d48' : '#10b981';
+      safest.geojson.features[0].properties.color = isDangerous ? [225, 29, 72, 255] : [16, 185, 129, 255];
+
+      // Update Map State
+      state.routeGeoJSON = safest.geojson;
+      // Also apply critical segments if the safest route still has them
+      state.criticalSegmentsGeoJSON = safest.analysis.critical_segments_geojson || null;
+      state.weatherWarningsGeoJSON = safest.analysis.weather_warnings_geojson || null;
+      updateDeckLayers();
+
+      // Update UI Panels
+      const riskBlock = document.getElementById('dynamic-risk-block');
+      const riskContent = document.getElementById('dynamic-risk-content');
+      const travelBlock = document.getElementById('travel-advisory-block');
+      const travelContent = document.getElementById('travel-advisory-content');
+      
+      if (riskBlock && riskContent && travelBlock && travelContent) {
+        riskBlock.style.borderColor = `rgba(${isDangerous ? '225,29,72' : '16,185,129'}, 0.8)`;
+        travelBlock.style.borderColor = `rgba(${isDangerous ? '225,29,72' : '16,185,129'}, 0.8)`;
+        
+        const rain = safest.analysis.max_precipitation || 0;
+        travelContent.innerHTML = `
+            <div style="color: ${highlightHex}; font-weight: 800; font-size: 1.05rem; margin-bottom: 6px;">
+              <i class="fa-solid fa-shield-halved"></i> SAFEST ALTERNATIVE ACTIVE
+            </div>
+            <div style="font-size: 0.8rem; margin-bottom: 4px;">Evaluated ${evaluatedRoutes.length} options.</div>
+        `;
+        riskContent.innerHTML = `
+            <div style="font-size: 0.85rem;"><b>Dynamic Risk:</b> <span style="color:#fff; background:${highlightHex}; padding:2px 6px; border-radius:4px; font-weight: 700;">${dynRisk.toFixed(3)}</span></div>
+            <div style="color: var(--text-muted); font-size: 0.75rem; margin-top: 6px;">Critical Sectors: ${safest.analysis.critical_sectors_count} | Rain: ${rain} mm/hr</div>
+        `;
+      }
+      
+      const dist = safest.geojson.features[0].properties.distance.toFixed(1);
+      const dur = safest.geojson.features[0].properties.duration;
+      setRouteStatus(`<i class="fa-solid fa-check-circle" style="color:${highlightHex};"></i> Safest route selected! | <b>${dist} km</b> (~${dur} mins)`);
+    } else {
+      setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Alternative routing failed.', true);
+    }
+  } catch(err) {
+    console.error('Routing error:', err);
+    setRouteStatus('<i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i> Alternative routing request failed.', true);
+  }
+}
+

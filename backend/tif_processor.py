@@ -133,12 +133,12 @@ class GeoTIFFProcessor:
             }
 
         self.tif_path = tif_file
-        print(f"🌲 Loading & Analyzing GeoTIFF: {self.tif_path}")
+        print(f"Loading & Analyzing GeoTIFF: {self.tif_path}")
 
         # 1. Method A: Rasterio (Gold Standard)
         if HAS_RASTERIO and HAS_NUMPY:
             try:
-                print("⚡ Reading GeoTIFF via Rasterio GIS engine...")
+                print("Reading GeoTIFF via Rasterio GIS engine...")
                 with rasterio.open(self.tif_path) as src:
                     self.crs = src.crs
                     raw_band = src.read(1)
@@ -172,12 +172,12 @@ class GeoTIFFProcessor:
                     self.is_loaded = True
                     return self._build_loaded_response()
             except Exception as re:
-                print(f"⚠️ Rasterio load note: {re}")
+                print(f"Rasterio load note: {re}")
 
         # 2. Method B: tifffile (Specialized GeoTIFF & BigTIFF Reader)
         if HAS_TIFFFILE and HAS_NUMPY:
             try:
-                print("🔬 Reading GeoTIFF via tifffile engine...")
+                print("Reading GeoTIFF via tifffile engine...")
                 with tifffile.TiffFile(self.tif_path) as tf:
                     page = tf.pages[0]
                     raw_band = page.asarray().astype(np.float32)

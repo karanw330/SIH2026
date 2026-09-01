@@ -1,5 +1,5 @@
 # ==============================================================================
-# North East India Nisarg AI - Project Requirements
+# North East India Landslide Sentinel AI - Project Requirements
 # ==============================================================================
 
 # Core Web Gateway & FastAPI Backend

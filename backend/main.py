@@ -6,48 +6,47 @@ from typing import Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from geojson_processor import processor
+from tif_processor import tif_processor
 from fastapi.responses import FileResponse
 
 # --------------------------------------------------------------------------
-# Root & Backend Directory Setup
+# Root Directory Setup
 # --------------------------------------------------------------------------
-backend_dir = os.path.dirname(os.path.abspath(__file__))
-root_dir = os.path.dirname(backend_dir)
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 proto2_dir = os.path.join(root_dir, "proto2")
 frontend_dir = os.path.join(root_dir, "frontend")
 chatbot_dir = os.path.join(root_dir, "Chatbot")
 
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
-if root_dir not in sys.path:
-    sys.path.insert(0, root_dir)
+env_path = os.path.join(root_dir, ".env")
+if os.path.exists(env_path):
+    with open(env_path, "r") as f:
+        for line in f:
+            if line.strip() and not line.startswith("#"):
+                try:
+                    k, v = line.strip().split("=", 1)
+                    os.environ[k.strip()] = v.strip()
+                except ValueError:
+                    pass
 if chatbot_dir not in sys.path:
     sys.path.insert(0, chatbot_dir)
 
-try:
-    from backend.geojson_processor import processor
-    from backend.tif_processor import tif_processor
-except ImportError:
-    from geojson_processor import processor
-    from tif_processor import tif_processor
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Loading spatial vector datasets and GeoTIFF rasters during application startup...")
+    print("Loading spatial vector datasets and GeoTIFF rasters during application startup...")
     processor.load_data()
     try:
         tif_processor.load_and_process()
     except Exception as e:
-        print(f"⚠️ GeoTIFF processor initialization note: {e}")
+        print(f"GeoTIFF processor initialization note: {e}")
 
     # Ensure hero-bg.jpg is synced to frontend/images/
     import shutil
     src_hero = os.path.join(root_dir, "hero-bg.jpg")
     dest_hero_dir = os.path.join(frontend_dir, "images")
-    dest_hero_file = os.path.join(dest_hero_dir, "hero-bg.jpg")
-    if os.path.exists(src_hero) and not os.path.exists(dest_hero_file):
+    if os.path.exists(src_hero):
         os.makedirs(dest_hero_dir, exist_ok=True)
-        shutil.copy(src_hero, dest_hero_file)
+        shutil.copy(src_hero, os.path.join(dest_hero_dir, "hero-bg.jpg"))
     yield
 
 app = FastAPI(
@@ -78,9 +77,15 @@ def read_api_info():
             "hazard": "/api/geojson/hazard",
             "stats": "/api/stats",
             "districts": "/api/districts",
-            "search": "/api/search?q=query"
+            "search": "/api/search?q=query",
+            "weather_geocode": "/api/weather/geocode",
+            "weather_route": "/api/weather/route"
         }
     }
+
+@app.get("/api/keys/tomtom")
+def get_tomtom_key():
+    return {"key": os.getenv("TOMTOM_API_KEY", "")}
 
 @app.get("/api/geojson/northeast")
 def get_northeast_geojson(
@@ -229,6 +234,199 @@ def analyze_route_hazard_segments(route_geojson):
 
     return route_geojson, analysis_result
 
+def analyze_route_weather(route_geojson):
+    import urllib.request
+    import json
+
+    if not route_geojson or "features" not in route_geojson or not route_geojson["features"]:
+        return route_geojson, {"weather_warnings_geojson": None, "max_precipitation": 0.0}
+
+    feature = route_geojson["features"][0]
+    geom = feature.get("geometry", {})
+    coords = geom.get("coordinates", [])
+
+    if not coords or geom.get("type") != "LineString":
+        return route_geojson, {"weather_warnings_geojson": None, "max_precipitation": 0.0}
+
+    # Sample ~10 points along the route
+    step = max(1, len(coords) // 10)
+    sampled_indices = list(range(0, len(coords), step))
+    if (len(coords) - 1) not in sampled_indices:
+        sampled_indices.append(len(coords) - 1)
+
+    lats = []
+    lons = []
+    sampled_coords = []
+    for idx in sampled_indices:
+        lats.append(str(coords[idx][1]))
+        lons.append(str(coords[idx][0]))
+        sampled_coords.append((coords[idx][0], coords[idx][1]))
+
+    lats_str = ",".join(lats)
+    lons_str = ",".join(lons)
+    
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lats_str}&longitude={lons_str}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=auto"
+    
+    warnings_features = []
+    max_precip = 0.0
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            
+            if isinstance(data, list):
+                responses = data
+            else:
+                responses = [data]
+                
+            for i, resp in enumerate(responses):
+                if "current" in resp:
+                    curr = resp["current"]
+                    temp = curr.get("temperature_2m", 0)
+                    precip = curr.get("precipitation", 0)
+                    wind = curr.get("wind_speed_10m", 0)
+                    code = curr.get("weather_code", 0)
+                    
+                    if precip > max_precip:
+                        max_precip = precip
+                        
+                    warning_types = []
+                    if temp > 38:
+                        warning_types.append(f"Extreme Heat ({temp}°C)")
+                    if precip > 5.0:
+                        warning_types.append(f"Heavy Rainfall ({precip}mm)")
+                    if wind > 40:
+                        warning_types.append(f"High Winds ({wind}km/h)")
+                    if code in [95, 96, 99]:
+                        warning_types.append("Thunderstorms")
+                    
+                    if warning_types:
+                        warnings_features.append({
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [sampled_coords[i][0], sampled_coords[i][1]]
+                            },
+                            "properties": {
+                                "warning_type": "Extreme Weather",
+                                "details": ", ".join(warning_types),
+                                "temperature": temp,
+                                "precipitation": precip,
+                                "wind_speed": wind
+                            }
+                        })
+    except Exception as e:
+        print(f"Weather sampling failed: {e}")
+        
+    weather_geojson = {
+        "type": "FeatureCollection",
+        "features": warnings_features
+    } if warnings_features else None
+    
+    return route_geojson, {"weather_warnings_geojson": weather_geojson, "max_precipitation": max_precip}
+
+# --------------------------------------------------------------------------
+# Weather & Geocoding Endpoints
+# --------------------------------------------------------------------------
+@app.get("/api/weather/geocode")
+def geocode_location(
+    name: str = Query(..., description="Location name to search for (e.g. 'Guwahati')")
+):
+    """Geocodes a location name to coordinates using Open-Meteo Geocoding API."""
+    import urllib.request
+    import urllib.parse
+    
+    encoded_name = urllib.parse.quote(name)
+    url = f"https://geocoding-api.open-meteo.com/v1/search?name={encoded_name}&count=5&language=en&format=json"
+    
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            if "results" in data:
+                return {
+                    "status": "success",
+                    "provider": "Open-Meteo Geocoding API",
+                    "results": data["results"]
+                }
+            else:
+                return {
+                    "status": "success",
+                    "provider": "Open-Meteo Geocoding API",
+                    "results": []
+                }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to geocode location: {str(e)}",
+            "results": None
+        }
+
+@app.get("/api/weather/route")
+def get_route_weather(
+    lat1: float = Query(..., description="Origin latitude"),
+    lon1: float = Query(..., description="Origin longitude"),
+    lat2: float = Query(..., description="Destination latitude"),
+    lon2: float = Query(..., description="Destination longitude"),
+    waypoints: Optional[str] = Query(None, description="Comma-separated lat,lon pairs for waypoints, e.g., 'lat,lon;lat,lon'")
+):
+    """Fetches live weather data for origin, destination, and waypoints using Open-Meteo Forecast API."""
+    import urllib.request
+    
+    lats = [str(lat1), str(lat2)]
+    lons = [str(lon1), str(lon2)]
+
+    if waypoints:
+        pts = waypoints.split(";")
+        for pt in pts:
+            parts = pt.split(",")
+            if len(parts) == 2:
+                try:
+                    lats.append(str(float(parts[0].strip())))
+                    lons.append(str(float(parts[1].strip())))
+                except ValueError:
+                    pass
+
+    lats_str = ",".join(lats)
+    lons_str = ",".join(lons)
+    
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lats_str}&longitude={lons_str}&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=auto"
+    
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            
+            weather_results = []
+            if isinstance(data, list):
+                responses = data
+            else:
+                responses = [data]
+                
+            labels = ["origin", "destination"] + [f"waypoint_{i+1}" for i in range(len(lats) - 2)]
+            
+            for i, resp in enumerate(responses):
+                if "current" in resp:
+                    weather_results.append({
+                        "point": labels[i],
+                        "latitude": resp["latitude"],
+                        "longitude": resp["longitude"],
+                        "weather": resp["current"],
+                        "elevation": resp.get("elevation")
+                    })
+            
+            return {
+                "status": "success",
+                "provider": "Open-Meteo Forecast API",
+                "weather_data": weather_results
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to fetch weather data: {str(e)}",
+            "weather_data": None
+        }
+
 @app.get("/api/route")
 def get_shortest_path(
     lat1: float = Query(..., description="Origin latitude"),
@@ -261,13 +459,22 @@ def get_shortest_path(
                         }]
                     }
                     geojson, hazard_analysis = analyze_route_hazard_segments(geojson)
+                    geojson, weather_analysis = analyze_route_weather(geojson)
+                    
+                    base_score = hazard_analysis.get("max_susceptibility", 0.0)
+                    max_precip = weather_analysis.get("max_precipitation", 0.0)
+                    dynamic_risk = round(min(1.0, base_score * (1 + (max_precip / 50.0))), 4)
+                    
                     return {
                         "status": "success",
                         "provider": "OSRM Routing Engine",
                         "geojson": geojson,
                         "distance_km": round(route.get("distance", 0) / 1000, 2),
                         "duration_min": round(route.get("duration", 0) / 60, 1),
-                        **hazard_analysis
+                        "dynamic_risk": dynamic_risk,
+                        "max_precipitation": max_precip,
+                        **hazard_analysis,
+                        **weather_analysis
                     }
         except Exception as oe:
             print(f"OSRM fallback failed: {oe}")
@@ -289,11 +496,20 @@ def get_shortest_path(
                         data = json.loads(body)
                         if data and not (isinstance(data, dict) and data.get("status") == "error"):
                             data, hazard_analysis = analyze_route_hazard_segments(data)
+                            data, weather_analysis = analyze_route_weather(data)
+                            
+                            base_score = hazard_analysis.get("max_susceptibility", 0.0)
+                            max_precip = weather_analysis.get("max_precipitation", 0.0)
+                            dynamic_risk = round(min(1.0, base_score * (1 + (max_precip / 50.0))), 4)
+                            
                             return {
                                 "status": "success",
                                 "provider": "Bhuvan Routing API",
                                 "geojson": data,
-                                **hazard_analysis
+                                "dynamic_risk": dynamic_risk,
+                                "max_precipitation": max_precip,
+                                **hazard_analysis,
+                                **weather_analysis
                             }
                     except Exception:
                         pass
@@ -327,6 +543,72 @@ def search_features(
         "query": q,
         "results": processor.search_stations(query=q, limit=limit)
     }
+
+@app.get("/api/health-facilities/stats")
+def get_health_facilities_stats():
+    """Returns statistics for health facilities loaded from GPKG/GeoJSON."""
+    stats = processor.stats.get("health_facilities", {})
+    return {
+        "status": "success",
+        "data": stats
+    }
+
+@app.get("/api/proximity")
+def get_proximity(
+    theme: str = Query("hospital", description="Theme to search (e.g., hospital, police)"),
+    lat: float = Query(..., description="Latitude coordinate"),
+    lon: float = Query(..., description="Longitude coordinate"),
+    buffer: int = Query(3000, description="Buffer radius in meters")
+):
+    """Queries local GPKG for hospitals, and falls back to Bhuvan API for other themes."""
+    if theme.lower() == "hospital":
+        try:
+            local_results = processor.search_hospitals_proximity(lat, lon, buffer)
+            return {
+                "status": "success",
+                "provider": "Local HOTOSM GPKG",
+                "data": {"hospital": local_results}
+            }
+        except Exception as e:
+            print(f"Local hospital search failed: {e}")
+            # Fall back to Bhuvan if local fails
+            pass
+
+    import urllib.request
+    import urllib.parse
+    
+    # We use a default token here but it can be overridden in the .env file
+    token = os.getenv("BHUVAN_PROXIMITY_KEY", "303b7fcc8c8916b80f09df7feb65d39802f809c4")
+    url = "https://bhuvan-app1.nrsc.gov.in/api/api_proximity/curl_hos_pos_prox.php"
+    params = {
+        "theme": theme,
+        "lat": str(lat),
+        "lon": str(lon),
+        "buffer": str(buffer),
+        "token": token
+    }
+    
+    query_string = urllib.parse.urlencode(params)
+    full_url = f"{url}?{query_string}"
+    
+    try:
+        req = urllib.request.Request(full_url, headers={
+            "Content-Type": "application/x-www-form-urlencoded", 
+            "User-Agent": "Mozilla/5.0"
+        })
+        with urllib.request.urlopen(req, timeout=15) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            return {
+                "status": "success",
+                "provider": "Bhuvan Proximity API",
+                "data": data
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Bhuvan proximity query failed: {str(e)}",
+            "data": None
+        }
 
 # --------------------------------------------------------------------------
 # GeoTIFF Landslide Susceptibility Raster Endpoints
@@ -393,7 +675,7 @@ try:
     from tools.localized_alert_dispatch_tool import localized_alert_dispatch_tool
     from tools.resource_allocation_tool import resource_allocation_tool
 except Exception as ie:
-    print(f"⚠️ Chatbot tools import note: {ie}")
+    print(f"Chatbot tools import note: {ie}")
 
 class RerouteRequest(BaseModel):
     origin: list[float] = Field(..., description="[latitude, longitude]")
@@ -408,6 +690,27 @@ class AlertDispatchRequest(BaseModel):
 class ResourceAllocationRequest(BaseModel):
     photo_gps_coords: list[float] = Field(..., description="[latitude, longitude]")
     search_radius_km: Optional[float] = 25.0
+
+class RouteAnalysisRequest(BaseModel):
+    geojson: dict
+
+@app.post("/api/route/analyze")
+def api_analyze_custom_route(req: RouteAnalysisRequest):
+    """Analyzes dynamic risk score and weather for a custom GeoJSON route."""
+    data, hazard_analysis = analyze_route_hazard_segments(req.geojson)
+    data, weather_analysis = analyze_route_weather(data)
+    
+    base_score = hazard_analysis.get("max_susceptibility", 0.0)
+    max_precip = weather_analysis.get("max_precipitation", 0.0)
+    dynamic_risk = round(min(1.0, base_score * (1 + (max_precip / 50.0))), 4)
+    
+    return {
+        "status": "success",
+        "dynamic_risk": dynamic_risk,
+        "max_precipitation": max_precip,
+        **hazard_analysis,
+        **weather_analysis
+    }
 
 @app.post("/api/agent/reroute")
 def api_agent_reroute(req: RerouteRequest):
@@ -563,13 +866,6 @@ def serve_chatbot():
         return FileResponse(chatbot_index)
     return {"error": "Chatbot index.html not found"}
 
-@app.get("/")
-def serve_frontend_root():
-    frontend_index = os.path.join(frontend_dir, "index.html")
-    if os.path.exists(frontend_index):
-        return FileResponse(frontend_index)
-    return {"error": "Frontend index.html not found"}
-
 if os.path.exists(proto2_dir):
     app.mount("/proto2", StaticFiles(directory=proto2_dir, html=True), name="proto2_static")
 
@@ -579,12 +875,7 @@ if os.path.exists(chatbot_dir):
 if os.path.exists(frontend_dir):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
-
 if __name__ == "__main__":
     import uvicorn
-    reload_excludes = ["*.png", "*.jpg", "*.tif", "*.geojson", "backend/cache/*", "frontend/images/*"]
-    try:
-        uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True, reload_excludes=reload_excludes)
-    except Exception:
-        uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, reload_excludes=reload_excludes)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
 

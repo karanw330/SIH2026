@@ -146,6 +146,11 @@ class GeoJSONProcessor:
         if self.is_loaded:
             return
             
+        # Also load health facilities and other datasets during startup
+        self.load_health_facilities_data()
+        self.load_landslides_data()
+        self.load_hazard_data()
+            
         if not os.path.exists(self.filepath):
             print(f"Warning: File {self.filepath} not found. Using North East region fallback dataset.")
             self._use_fallback_data()
@@ -671,6 +676,145 @@ class GeoJSONProcessor:
                 if len(results) >= limit:
                     break
         return results
+
+    def load_health_facilities_data(self):
+        """Loads health facilities data from GPKG, falling back to GeoJSON."""
+        if getattr(self, 'is_health_facilities_loaded', False):
+            return
+
+        import sqlite3
+        import struct
+
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        gpkg_file = os.path.join(base_dir, "hotosm_ind_health_facilities_osm_gpkg", "health_facilities.gpkg")
+        
+        self.health_facilities_features = []
+        self.health_facilities_stats = {
+            "total_facilities": 0,
+            "state_counts": {},
+            "amenity_counts": {},
+            "operator_counts": {}
+        }
+        
+        if os.path.exists(gpkg_file):
+            print(f"Loading Health Facilities from GPKG: {gpkg_file}...")
+            try:
+                conn = sqlite3.connect(gpkg_file)
+                c = conn.cursor()
+                # Normalize state names to GPKG format
+                ne_states = ['Arunāchal Pradesh', 'Assam', 'Manipur', 'Meghālaya', 'Mizoram', 'Nāgāland', 'Sikkim', 'Tripura']
+                placeholders = ', '.join(['?'] * len(ne_states))
+                query = f"""
+                    SELECT fid, geom, id, name, name_en, amenity, healthcare, healthcare_speciality, 
+                           operator_type, addr_full, addr_city, adm1_name, adm2_name, adm3_name, name_latin
+                    FROM health_facilities 
+                    WHERE adm1_name IN ({placeholders})
+                """
+                c.execute(query, ne_states)
+                rows = c.fetchall()
+                
+                for row in rows:
+                    fid, geom_bytes, osm_id, name, name_en, amenity, healthcare, speciality, operator, addr_full, addr_city, adm1, adm2, adm3, name_latin = row
+                    
+                    # Parse Point from GPKG geometry
+                    flags = geom_bytes[3]
+                    envelope_type = (flags >> 1) & 0x07
+                    envelope_sizes = {0: 0, 1: 32, 2: 48, 3: 48, 4: 64}
+                    header_size = 8 + envelope_sizes.get(envelope_type, 0)
+                    wkb = geom_bytes[header_size:]
+                    byte_order = wkb[0]
+                    wkb_type = struct.unpack('<I' if byte_order == 1 else '>I', wkb[1:5])[0]
+                    
+                    lat, lng = None, None
+                    if wkb_type == 1:
+                        lng, lat = struct.unpack('<dd' if byte_order == 1 else '>dd', wkb[5:21])
+                    
+                    if lat is not None and lng is not None:
+                        props = {
+                            "id": osm_id,
+                            "name": name or name_en or name_latin or "Unnamed Facility",
+                            "name_en": name_en,
+                            "amenity": amenity or healthcare or "hospital",
+                            "healthcare": healthcare,
+                            "healthcare_speciality": speciality,
+                            "operator_type": operator or "unknown",
+                            "addr_full": addr_full,
+                            "addr_city": addr_city,
+                            "state": adm1.replace('ā', 'a').replace('ī', 'i') if adm1 else None,
+                            "district": adm2,
+                            "subdistrict": adm3,
+                            "name_latin": name_latin
+                        }
+                        
+                        self.health_facilities_features.append({
+                            "type": "Feature",
+                            "geometry": {"type": "Point", "coordinates": [lng, lat]},
+                            "properties": props
+                        })
+                        
+                        # Update stats
+                        state_name = props["state"] or "Unknown"
+                        self.health_facilities_stats["state_counts"][state_name] = self.health_facilities_stats["state_counts"].get(state_name, 0) + 1
+                        
+                        am_type = props["amenity"].lower() if props["amenity"] else "unknown"
+                        self.health_facilities_stats["amenity_counts"][am_type] = self.health_facilities_stats["amenity_counts"].get(am_type, 0) + 1
+                        
+                        op_type = props["operator_type"].lower() if props["operator_type"] else "unknown"
+                        self.health_facilities_stats["operator_counts"][op_type] = self.health_facilities_stats["operator_counts"].get(op_type, 0) + 1
+                        
+                        self.health_facilities_stats["total_facilities"] += 1
+                        
+                conn.close()
+                self.is_health_facilities_loaded = True
+                self.stats["health_facilities"] = self.health_facilities_stats
+                print(f"Loaded {self.health_facilities_stats['total_facilities']} health facilities from GPKG.")
+                return
+            except Exception as e:
+                print(f"Failed to load from GPKG: {e}. Falling back to GeoJSON...")
+
+        # Fallback to GeoJSON
+        geojson_file = os.path.join(base_dir, "ne_health_facilities.geojson")
+        if os.path.exists(geojson_file):
+            print(f"Loading Health Facilities from {geojson_file}...")
+            try:
+                with open(geojson_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.health_facilities_features = data.get("features", [])
+                    self.health_facilities_stats["total_facilities"] = len(self.health_facilities_features)
+                    self.is_health_facilities_loaded = True
+                    self.stats["health_facilities"] = self.health_facilities_stats
+            except Exception as e:
+                print(f"Failed to load fallback GeoJSON: {e}")
+
+    def search_hospitals_proximity(self, lat: float, lon: float, buffer_meters: float) -> list:
+        """Finds health facilities within a given radius using Haversine formula."""
+        if not getattr(self, 'is_health_facilities_loaded', False):
+            self.load_health_facilities_data()
+            
+        import math
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371000  # radius of Earth in meters
+            phi1 = math.radians(lat1)
+            phi2 = math.radians(lat2)
+            delta_phi = math.radians(lat2 - lat1)
+            delta_lambda = math.radians(lon2 - lon1)
+            a = math.sin(delta_phi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(delta_lambda/2)**2
+            return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+            
+        results = []
+        for feat in self.health_facilities_features:
+            geom = feat.get("geometry", {})
+            if geom.get("type") == "Point" and geom.get("coordinates"):
+                flon, flat = geom["coordinates"]
+                dist = haversine(lat, lon, flat, flon)
+                if dist <= buffer_meters:
+                    props = dict(feat.get("properties", {}))
+                    props["distance_meters"] = round(dist, 2)
+                    props["lat"] = flat
+                    props["lon"] = flon
+                    results.append(props)
+                    
+        return sorted(results, key=lambda x: x["distance_meters"])
 
 # Singleton instance for app reuse
 processor = GeoJSONProcessor()

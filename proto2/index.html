@@ -70,8 +70,18 @@
           <h2><i class="fa-solid fa-route" style="color: var(--accent-gold);"></i> Road Routing & Shortest Path</h2>
         </div>
 
+        <!-- Map Base Style Switcher -->
+        <div class="filter-group">
+          <label><i class="fa-solid fa-globe"></i> WebGL Basemap Style</label>
+          <div class="layer-selector">
+            <button class="layer-btn active" data-layer="dark">Dark Matter</button>
+            <button class="layer-btn" data-layer="satellite">Satellite</button>
+            <button class="layer-btn" data-layer="street">Street</button>
+          </div>
+        </div>
+
         <!-- Road Routing & Hazard Segment Extraction -->
-        <div class="filter-group routing-section">
+        <div class="filter-group routing-section" style="margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
           <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">
             Select sample preset corridor or pick points on map:
           </div>
@@ -106,40 +116,96 @@
 
           <div id="route-status-msg" style="font-size: 0.75rem; font-family: var(--font-mono); margin-top: 8px; color: var(--text-muted);"></div>
         </div>
+
+        <!-- Nearby Hospitals Section -->
+        <div class="filter-group routing-section" style="margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <label style="color: #f43f5e; font-weight: 700;">
+            <i class="fa-solid fa-truck-medical"></i> Health Infrastructure
+          </label>
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">
+            Find health facilities near the map center.
+          </div>
+          
+          <div style="margin-bottom: 8px;">
+            <label style="font-size: 0.7rem; color: #ccc;">Search Radius: <span id="radius-val">5</span> km</label>
+            <input type="range" id="hospital-radius" min="5" max="25" step="1" value="5" style="width: 100%; margin-top: 4px;" />
+          </div>
+
+          <div style="margin-bottom: 8px;">
+            <select id="facility-type-filter" class="select-input" style="font-size: 0.75rem; margin-bottom: 4px; padding: 6px;">
+              <option value="all">All Facility Types</option>
+              <option value="hospital">Hospitals</option>
+              <option value="clinic">Clinics</option>
+              <option value="pharmacy">Pharmacies</option>
+              <option value="dentist">Dentists</option>
+              <option value="health_centre">Health Centres / Posts</option>
+            </select>
+            <select id="operator-type-filter" class="select-input" style="font-size: 0.75rem; padding: 6px;">
+              <option value="all">All Operators</option>
+              <option value="government">Government</option>
+              <option value="private">Private</option>
+            </select>
+          </div>
+
+          <button id="btn-find-hospitals" class="popup-btn" style="width: 100%; background: #e11d48; font-weight: 700; margin-bottom: 8px;">
+            <i class="fa-solid fa-magnifying-glass-location"></i> Find Facilities
+          </button>
+          <button id="btn-clear-hospitals" class="layer-btn hidden" style="width: 100%; margin-bottom: 8px;">
+            <i class="fa-solid fa-trash-can"></i> Clear Facilities
+          </button>
+          <div id="hospitals-status-msg" style="font-size: 0.75rem; color: var(--text-muted);"></div>
+        </div>
       </aside>
 
       <!-- Map Canvas -->
       <div id="map-container">
         <div id="map"></div>
         
-        <!-- Legend Overlay -->
-        <div class="map-legend glass-card" id="map-legend">
-          <h4 style="display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-layer-group" style="color: var(--beacon-purple);"></i> Landslide Risk Scale (.tif)</h4>
-          <div style="margin-bottom: 8px;">
-            <div style="height: 10px; border-radius: 5px; background: linear-gradient(to right, #1a9641, #ffffbf, #fdae61, #d7191c); border: 1px solid rgba(255,255,255,0.2);"></div>
-            <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted); margin-top: 3px;">
-              <span style="color: #1a9641; font-weight: 600;">0.00</span>
-              <span style="color: #ffffbf; font-weight: 600;">0.25</span>
-              <span style="color: #fdae61; font-weight: 600;">0.50</span>
-              <span style="color: #E14D3C; font-weight: 700;">0.75 - 1.00</span>
+        <!-- UI Overlay Wrapper for Map Legend & Advisories -->
+        <div style="position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 1000; pointer-events: none; width: 320px;">
+          <!-- Travel Advisory Block -->
+          <div class="map-legend glass-card" id="travel-advisory-block" style="position: relative; bottom: auto; right: auto; border: 2px solid transparent; display: none; pointer-events: auto; z-index: auto;">
+            <h4 style="display: flex; align-items: center; gap: 6px; margin: 0;"><i class="fa-solid fa-route"></i> Travel Advisory</h4>
+            <div id="travel-advisory-content" style="font-size: 0.8rem; margin-top: 8px; font-family: var(--font-main);">
             </div>
           </div>
-          
-          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem;">
-            <div class="legend-item"><span class="legend-color" style="background: #1a9641;"></span><span>0.00 - 0.25: Stable / Basins</span></div>
-            <div class="legend-item"><span class="legend-color" style="background: #ffffbf;"></span><span>0.25 - 0.50: Moderate Slope</span></div>
-            <div class="legend-item"><span class="legend-color" style="background: #fdae61;"></span><span>0.50 - 0.75: High Risk</span></div>
-            <div class="legend-item"><span class="legend-color" style="background: #d7191c;"></span><span style="color: var(--hazard-red); font-weight: 700;">0.75 - 1.00: Critical Hazard</span></div>
+
+          <!-- Dynamic Risk Assessment Block -->
+          <div class="map-legend glass-card" id="dynamic-risk-block" style="position: relative; bottom: auto; right: auto; border: 2px solid transparent; display: none; pointer-events: auto; z-index: auto;">
+            <h4 style="display: flex; align-items: center; gap: 6px; margin: 0;"><i class="fa-solid fa-chart-line"></i> Landslide Risk</h4>
+            <div id="dynamic-risk-content" style="font-size: 0.8rem; margin-top: 8px; font-family: var(--font-main);">
+            </div>
           </div>
 
-          <div class="legend-divider" style="border-top: 1px solid rgba(255,255,255,0.12); margin: 6px 0;"></div>
-          <div class="legend-item">
-            <span class="legend-color" style="background: var(--accent-teal); border: 1px solid var(--accent-light);"></span>
-            <span>OSM Vector Features</span>
-          </div>
-          <div class="legend-item" style="margin-top: 4px; display: flex; align-items: center; gap: 10px;">
-            <span style="width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(135deg, #f472b6, var(--beacon-purple)); border: 2px solid #fff; box-shadow: 0 0 12px rgba(217, 70, 239, 0.95); display: inline-block; animation: geotag-beacon-ping 1.8s infinite ease-in-out;"></span>
-            <span style="color: var(--beacon-purple); font-weight: 700; font-family: var(--font-mono); font-size: 0.74rem;">Pulsing Incident Beacons</span>
+          <!-- Legend Overlay -->
+          <div class="map-legend glass-card" id="map-legend" style="position: relative; bottom: auto; right: auto; pointer-events: auto; z-index: auto;">
+            <h4 style="display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-layer-group" style="color: var(--beacon-purple);"></i> Landslide Risk Scale (.tif)</h4>
+            <div style="margin-bottom: 8px;">
+              <div style="height: 10px; border-radius: 5px; background: linear-gradient(to right, #1a9641, #ffffbf, #fdae61, #d7191c); border: 1px solid rgba(255,255,255,0.2);"></div>
+              <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted); margin-top: 3px;">
+                <span style="color: #1a9641; font-weight: 600;">0.00</span>
+                <span style="color: #ffffbf; font-weight: 600;">0.25</span>
+                <span style="color: #fdae61; font-weight: 600;">0.50</span>
+                <span style="color: #E14D3C; font-weight: 700;">0.75 - 1.00</span>
+              </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem;">
+              <div class="legend-item"><span class="legend-color" style="background: #1a9641;"></span><span>0.00 - 0.25: Stable / Basins</span></div>
+              <div class="legend-item"><span class="legend-color" style="background: #ffffbf;"></span><span>0.25 - 0.50: Moderate Slope</span></div>
+              <div class="legend-item"><span class="legend-color" style="background: #fdae61;"></span><span>0.50 - 0.75: High Risk</span></div>
+              <div class="legend-item"><span class="legend-color" style="background: #d7191c;"></span><span style="color: var(--hazard-red); font-weight: 700;">0.75 - 1.00: Critical Hazard</span></div>
+            </div>
+
+            <div class="legend-divider" style="border-top: 1px solid rgba(255,255,255,0.12); margin: 6px 0;"></div>
+            <div class="legend-item">
+              <span class="legend-color" style="background: var(--accent-teal); border: 1px solid var(--accent-light);"></span>
+              <span>OSM Vector Features</span>
+            </div>
+            <div class="legend-item" style="margin-top: 4px; display: flex; align-items: center; gap: 10px;">
+              <span style="width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(135deg, #f472b6, var(--beacon-purple)); border: 2px solid #fff; box-shadow: 0 0 12px rgba(217, 70, 239, 0.95); display: inline-block; animation: geotag-beacon-ping 1.8s infinite ease-in-out;"></span>
+              <span style="color: var(--beacon-purple); font-weight: 700; font-family: var(--font-mono); font-size: 0.74rem;">Pulsing Incident Beacons</span>
+            </div>
           </div>
         </div>
       </div>
